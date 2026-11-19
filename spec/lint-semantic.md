@@ -1,4 +1,4 @@
-<!-- spec-guard: review pending -->
+<!-- spec-guard: review approved fb94e3e945cb -->
 
 # Spec: lint-semantic
 
