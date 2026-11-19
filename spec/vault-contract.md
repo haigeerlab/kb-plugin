@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 119d6512df1f -->
+<!-- spec-guard: review approved bbaf3708a7a9 -->
 
 # Spec: vault-contract
 
