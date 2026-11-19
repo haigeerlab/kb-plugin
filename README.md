@@ -1,6 +1,6 @@
 # kb
 
-在 Claude Code 与 Codex 中使用同一个本地知识库。当前版本 `0.1.0` 已实现插件外壳、位置配置、自检、知识库初始化、契约校验、脱敏扫描与知识保存，要求 Python 3.9 或更高版本，无第三方依赖。
+在 Claude Code 与 Codex 中使用同一个本地知识库。当前版本 `0.1.0` 已实现插件外壳、位置配置、自检、知识库初始化、契约校验、脱敏扫描、知识保存与检索，要求 Python 3.9 或更高版本，无第三方依赖。
 
 ## 安装
 
@@ -41,7 +41,7 @@ codex plugin add kb@kb-marketplace
 | `/kb:doctor` | 已实现 | 检查配置、显示知识库位置并自检 |
 | `/kb:init` | 已实现 | 预览并确认后补齐知识库骨架，已有文件不覆盖 |
 | `/kb:save` | 已实现 | 草稿校验、预览，确认后保存一条经验并本地提交 |
-| `/kb:ask` | 未实现 | 后续实现知识查询 |
+| `/kb:ask` | 已实现 | 只读检索知识库，基于候选页面回答并附出处，区分现行、过时与争议内容 |
 | `/kb:lint` | 未实现 | 后续实现知识库检查 |
 
 也可以直接使用脚本。从任何目录调用时，把脚本路径替换为本仓库内的绝对路径：
@@ -168,6 +168,22 @@ apply 重跑同样的校验并比较指纹；知识库 HEAD、工作区状态、
 两条命令都支持 `--json`：preview 固定字段为 `{ok, fingerprint, created, modified, diff, replaced_aliases, findings}`；apply 为 `{ok, commit, created, modified, findings}`。
 findings 使用中文原因和打码后的敏感值。退出码：`0` 成功，`1` 校验或脱敏失败、写入或提交失败，`2` 用法或配置错误，`3` 指纹不匹配。
 
+## 查询知识库
+
+在任意项目中运行 `/kb:ask <问题>`，或直接调用确定性的只读检索脚本：
+
+```bash
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py ask search 缓存 cache 插件 --json
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py ask search 派活 成本 --limit 5
+```
+
+多个词按任意一个命中匹配，不区分大小写，正则特殊字符作为字面量处理。范围为 `wiki/` 的 Markdown 页面，frontmatter 不产生命中，index 只对对应页面加权。代码块内同样检索。
+每条命中标记 `current`、`outdated` 或 `disputed`；`status: superseded` 的页面所有命中都为 outdated，同时返回取代页面路径。
+排序按不同命中词计分，标题与 index 加权，只有 outdated 命中的页面排在含现行或争议命中的页面之后；同分按更新日期新到旧、路径升序。默认返回 10 页，每页最多 20 条命中行。
+
+退出码：`0` 有命中，`1` 无命中（`--json` 仍返回合法 JSON，`pages` 为空），`2` 配置或用法错误。正常 JSON 输出为 schema 1，包含知识库绝对路径、检索词、候选页面、得分、来源、区域与原始行号；`truncated` 表示是否因页数限制省略候选。
+检索只读取配置的知识库，不写文件、不修改 Git 状态。其他插件可通过 [interface.json](plugins/kb/interface.json) 探测契约 `1.0`，参数模板、字段、退出码、版本规则与静默探测方式见[接口契约说明](plugins/kb/references/interface.md)。
+
 ## 卸载
 
 Claude Code：
@@ -199,3 +215,4 @@ python3 -B scripts/check-manifests.py
 根目录解析测试使用假的 `codex`，清单失败测试只修改临时副本。
 知识库测试把合法样例和 AC6 三段素材样例复制到临时目录，用临时 git 仓库提交基线；覆盖全部 13 个检查码、证据回归、只读检查和初始化不覆盖行为。脱敏测试在运行时拼接假密钥，覆盖规则反例、别名、哈希放行、输出打码，以及会话摘录的 3 处命中与 1 处替换。vendor 原文件及许可证的 SHA-256 也在测试中核验。
 save 测试覆盖路径白名单、脱敏与代号替换、完整历史校验、指纹失效、写入回滚和提交失败；另在 init 创建的临时知识库中，用三段素材连续保存新坑页、新决策页和推翻旧结论的 outdated 块，每次检查为零问题，并核验三个 save 提交与 inbox 原文不可改性。
+ask 测试覆盖区域与代码块、整页 superseded、计分排序、截断、多词字面匹配、JSON 契约与退出码，以及干净和脏知识库中文件及 Git 状态保持不变；interface 检查在临时副本构造 ask skill，覆盖契约缺失、格式错误、版本和技能引用。

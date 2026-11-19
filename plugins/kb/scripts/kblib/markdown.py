@@ -244,24 +244,28 @@ class Callout:
     title: str
     body: str
     line: int
+    end_line: int = 0
 
 
 def callouts(text):
     result = []
     current = None
     body = []
-    for number, line in visible_lines(text):
-        match = re.match(r'^ {0,3}>\s*\[!([^\]]+)\][+-]?(?:\s+(.*))?$', line)
+    visible = {number for number, _ in visible_lines(text)}
+    lines = text.splitlines()
+    for number, line in enumerate(lines, 1):
+        match = (re.match(r'^ {0,3}>\s*\[!([^\]]+)\][+-]?(?:\s+(.*))?$', line)
+                 if number in visible else None)
         if match or not re.match(r'^ {0,3}>', line):
             if current:
-                result.append(Callout(*current, '\n'.join(body), start))
+                result.append(Callout(*current, '\n'.join(body), start, number - 1))
                 current = None
         if match:
             current, start, body = (match[1].lower(), match[2] or ''), number, []
-        elif current:
+        elif current and number in visible:
             body.append(re.sub(r'^ {0,3}> ?', '', line))
     if current:
-        result.append(Callout(*current, '\n'.join(body), start))
+        result.append(Callout(*current, '\n'.join(body), start, len(lines)))
     return result
 
 

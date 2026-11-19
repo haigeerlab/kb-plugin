@@ -3,6 +3,7 @@
 
 import json
 from pathlib import Path
+import re
 import sys
 
 
@@ -44,6 +45,17 @@ def check():
     skills = codex.get("skills")
     if not isinstance(skills, str) or not skills or not (ROOT / "plugins/kb" / skills).is_dir():
         raise ValueError("Codex 清单的 skills 必须指向已存在的目录")
+    interface = load('plugins/kb/interface.json')
+    version = interface.get('interface')
+    if not isinstance(version, str) or not re.fullmatch(r'[0-9]+\.[0-9]+', version):
+        raise ValueError('interface.json 的 interface 必须为 主.次 版本号，例如 1.0')
+    skill = interface.get('skill')
+    match = re.fullmatch(r'kb:([a-z][a-z0-9-]*)', skill) if isinstance(skill, str) else None
+    if match is None:
+        raise ValueError('interface.json 的 skill 必须为 kb:<技能名>，例如 kb:ask')
+    path = ROOT / 'plugins/kb/skills' / match[1] / 'SKILL.md'
+    if not path.is_file():
+        raise ValueError(f'interface.json 引用的 skill {skill} 不存在：{path}')
 
 
 def main():
@@ -52,7 +64,7 @@ def main():
     except ValueError as error:
         print(f"清单检查失败：{error}", file=sys.stderr)
         return 1
-    print("清单检查通过：插件名称、版本、描述一致，skills 目录存在。")
+    print("清单检查通过：插件名称、版本、描述一致，skills 目录与 interface.json 引用的技能存在，契约版本格式正确。")
     return 0
 
 

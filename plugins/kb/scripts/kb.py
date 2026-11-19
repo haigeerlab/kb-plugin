@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 
 from kblib import KbError
+from kblib.ask import search
 from kblib.config import (config_path, load_aliases, load_blocklist, read_optional_text,
                           resolve_vault, set_vault)
 from kblib.doctor import diagnose
@@ -35,12 +36,13 @@ class ChineseParser(argparse.ArgumentParser):
             "kb.py init [--confirm] [--json]；kb.py check [--json] [路径 ...]；"
             "kb.py redact <文件|-> [--json | --apply-aliases]；"
             "kb.py save preview <草稿目录> [--json]；"
-            "kb.py save apply <草稿目录> --confirm <指纹> [--json]。运行 --help 查看帮助。"
+            "kb.py save apply <草稿目录> --confirm <指纹> [--json]；"
+            "kb.py ask search <词> [<词> ...] [--limit N] [--json]。运行 --help 查看帮助。"
         )
 
 
 def build_parser():
-    parser = ChineseParser(prog="kb.py", description="kb 插件自检、知识库配置、初始化、契约检查、脱敏扫描与知识保存")
+    parser = ChineseParser(prog="kb.py", description="kb 插件自检、知识库配置、初始化、契约检查、脱敏扫描、知识保存与检索")
     commands = parser.add_subparsers(dest="command", required=True, metavar="子命令")
     doctor = commands.add_parser("doctor", help="检查配置与知识库目录")
     doctor.add_argument("--json", action="store_true", help="输出 JSON 对象")
@@ -70,6 +72,12 @@ def build_parser():
     apply.add_argument('draft', metavar='草稿目录', help='已经预览并确认的草稿目录')
     apply.add_argument('--confirm', required=True, metavar='指纹', help='用户确认的预览指纹')
     apply.add_argument('--json', action='store_true', help='输出 JSON 对象')
+    asker = commands.add_parser('ask', help='只读检索知识库')
+    actions = asker.add_subparsers(dest='action', required=True, metavar='检索命令')
+    searcher = actions.add_parser('search', help='按多个词任意匹配知识页面')
+    searcher.add_argument('terms', nargs='+', metavar='词', help='不区分大小写的字面检索词')
+    searcher.add_argument('--limit', type=int, default=10, metavar='N', help='最多返回页数，必须为正整数，默认 10')
+    searcher.add_argument('--json', action='store_true', help='输出 schema 1 JSON 对象')
     return parser
 
 
@@ -125,10 +133,12 @@ def main(argv=None):
             result, redacted_text = redact(args, blocklist)
         elif args.command == 'save':
             result, exit_code = save(args.draft, args.confirm if args.action == 'apply' else None)
+        elif args.command == 'ask':
+            result = search(Vault.load(), args.terms, args.limit)
         else:
             result = set_vault(args.path, args.confirm)
         if args.command != 'save':
-            exit_code = 0 if result["ok"] else 1
+            exit_code = (0 if result['pages'] else 1) if args.command == 'ask' else (0 if result["ok"] else 1)
     except KbError as error:
         message = mask_text(str(error), blocklist) if command in ('check', 'redact', 'save') else str(error)
         result = {"ok": False, "config": str(config_path()), "error": message}
@@ -170,6 +180,20 @@ def main(argv=None):
             print('保存失败，未完成保存。')
     elif exit_code == 2:
         print(result["error"], file=sys.stderr)
+    elif command == 'ask':
+        zones = {'current': '现行', 'outdated': '过时', 'disputed': '争议'}
+        statuses = {'current': '现行', 'superseded': '已被取代'}
+        for page in result['pages']:
+            print(f"{page['title']}\n路径：{page['path']}\n"
+                  f"状态：{statuses.get(page['status'], page['status'])}；得分：{page['score']}")
+            if page['superseded_by']:
+                print(f"取代页面：{page['superseded_by']}")
+            for hit in page['hits']:
+                print(f"  第 {hit['line']} 行 [{zones[hit['zone']]}] {hit['text']}")
+        if not result['pages']:
+            print('知识库里没有命中页面。')
+        if result['truncated']:
+            print('结果已截断，可增大 --limit 查看更多页面。')
     elif command == 'redact':
         if args.apply_aliases:
             print_redaction(result, sys.stderr)

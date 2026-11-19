@@ -28,6 +28,11 @@ class ManifestTests(unittest.TestCase):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / relative, target)
         (self.copy / "plugins/kb/skills/doctor").mkdir(parents=True)
+        interface = self.copy / 'plugins/kb/interface.json'
+        shutil.copyfile(ROOT / 'plugins/kb/interface.json', interface)
+        skill = self.copy / 'plugins/kb/skills/ask/SKILL.md'
+        skill.parent.mkdir(parents=True)
+        skill.write_text('---\nname: ask\ndescription: 临时检索技能\n---\n', encoding='utf-8')
 
     def run_check(self, root):
         return subprocess.run(
@@ -45,8 +50,8 @@ class ManifestTests(unittest.TestCase):
             data[key] = value
         path.write_text(json.dumps(data), encoding="utf-8")
 
-    def test_repository_manifests_pass(self):
-        result = self.run_check(ROOT)
+    def test_repository_manifests_pass_with_skill_in_temporary_copy(self):
+        result = self.run_check(self.copy)
         self.assertEqual(result.returncode, 0, result)
         self.assertIn("通过", result.stdout)
 
@@ -82,6 +87,50 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result)
         self.assertIn("JSON", result.stdout + result.stderr)
         self.assertNotIn("Traceback", result.stdout + result.stderr)
+
+    def test_interface_search_contract(self):
+        data = json.loads((ROOT / 'plugins/kb/interface.json').read_text(encoding='utf-8'))
+        self.assertEqual(data['interface'], '1.0')
+        self.assertEqual(data['schema'], 1)
+        self.assertEqual(data['skill'], 'kb:ask')
+        self.assertEqual(data['search'], ['python3', '-B', 'scripts/kb.py', 'ask',
+                                          'search', '--json', '<term>', '...'])
+        self.assertEqual(set(data['exit_codes']), {'0', '1', '2'})
+
+    def test_missing_invalid_or_non_object_interface_fails(self):
+        path = self.copy / 'plugins/kb/interface.json'
+        for content in (None, '{broken', '[]'):
+            with self.subTest(content=content):
+                if content is None:
+                    path.unlink()
+                else:
+                    path.write_text(content, encoding='utf-8')
+                result = self.run_check(self.copy)
+                self.assertEqual(result.returncode, 1, result)
+                self.assertIn('interface.json', result.stderr)
+                self.assertNotIn('Traceback', result.stderr)
+
+    def test_interface_version_requires_major_minor(self):
+        for value in ('1', '1.0.0', 'v1.0', '', '1.0\n', 1, None):
+            with self.subTest(value=value):
+                self.mutate('plugins/kb/interface.json', 'interface', value)
+                result = self.run_check(self.copy)
+                self.assertEqual(result.returncode, 1, result)
+                self.assertIn('主.次', result.stderr)
+
+    def test_interface_referenced_skill_must_exist_and_be_valid(self):
+        skill = self.copy / 'plugins/kb/skills/ask/SKILL.md'
+        skill.unlink()
+        result = self.run_check(self.copy)
+        self.assertEqual(result.returncode, 1, result)
+        self.assertIn('kb:ask', result.stderr)
+        self.assertIn('SKILL.md', result.stderr)
+        for value in (None, [], 'other:ask', 'kb:../ask'):
+            with self.subTest(value=value):
+                self.mutate('plugins/kb/interface.json', 'skill', value)
+                result = self.run_check(self.copy)
+                self.assertEqual(result.returncode, 1, result)
+                self.assertIn('skill', result.stderr)
 
 
 if __name__ == "__main__":

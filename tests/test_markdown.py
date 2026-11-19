@@ -63,6 +63,15 @@ class MarkdownTests(unittest.TestCase):
         self.assertEqual(anchors('# 标题！ 中文\n## Hello, *World*!\n## 现行结论\n## 现行结论'),
                          {'标题-中文', 'hello-world', '现行结论', '现行结论-1'})
 
+    def test_callout_ranges_include_quoted_code_but_end_before_unquoted_code(self):
+        text = ('> [!outdated] 旧结论\n> ```md\n> [!disputed] 伪标注\n> ```\n'
+                '> 旧正文\n```md\n> [!disputed] 伪标注\n```\n'
+                '> [!disputed] 争议\n> 双方说法\n')
+        blocks = callouts(text)
+        self.assertEqual([(block.kind, block.line, block.end_line) for block in blocks],
+                         [('outdated', 1, 5), ('disputed', 9, 10)])
+        self.assertEqual(blocks[0].body, '旧正文')
+
     def test_balanced_destinations_and_encoded_anchors(self):
         found = links('[页面](a(b).md#中文) [中文](<a%20b.md#%E4%B8%AD%E6%96%87>)')
         self.assertEqual([x.target for x in found], ['a(b).md#中文', 'a%20b.md#%E4%B8%AD%E6%96%87'])
