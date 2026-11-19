@@ -133,3 +133,4 @@ def resolve_vault(environ: Mapping[str, str] = os.environ) -> Path:
 ## 变更记录
 
 - 2026-11-19 初稿。
+- 2026-11-19 最终验收前：实测确认假设 3（Codex 认 `.claude-plugin/marketplace.json`），未改范围。记录一处宿主差异：Codex 读的是缓存里的 SKILL.md 副本。

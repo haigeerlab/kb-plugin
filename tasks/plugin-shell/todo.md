@@ -14,4 +14,8 @@
   - 写入 `~/.config/kb/config.json`（vault=~/Documents/haigeerlab/kb），`kb.py doctor` 退出 0
   - `claude plugin marketplace add` 加 `install kb@kb-marketplace`：scope user，状态 enabled，Read from 指向仓库内的 `plugins/kb`（本地目录市场，改代码不用重装）
   - AC2：在 tab-leader 目录运行 `claude -p "/kb:doctor" --model haiku --allowedTools Bash`，新进程解析到正确的知识库，自检通过，退出 0
-- [ ] T5 Codex 真实安装，验收 AC3（gate，模块最终验收）
+- [x] T5 Codex 真实安装，验收 AC3（gate，用户 2026-11-19 批准执行）
+  - `codex plugin marketplace add` 加 `codex plugin add kb@kb-marketplace` 成功：**Codex 认 `.claude-plugin/marketplace.json`**，Spec 假设 3 成立，不需要补 `.agents/plugins/marketplace.json`
+  - `codex plugin list --available --json` 里 kb 条目带 `installed`、`enabled`、`source.path` 三个字段，和解析片段用的完全一致；清空 Claude 环境变量后实跑片段，经 Codex 回退路径解析出 ROOT，doctor 通过
+  - AC3：delegate 只读派单 run `20261119110744.35435`（在 tab-leader 目录，effort low）。Codex 自行加载了 `~/.codex/plugins/cache/kb-marketplace/kb/0.1.0/skills/doctor/SKILL.md`，ROOT 解析为仓库内的 `plugins/kb`，doctor 退出 0
+  - 已知差异：Codex 读的是**缓存副本**里的 SKILL.md（脚本仍按 `source.path` 从源码目录运行），Claude Code 直接读源码目录。所以以后改了 skill 文本，Codex 侧要刷新缓存，具体刷新命令待下一次改 skill 时实测后写进 README
