@@ -20,4 +20,9 @@
   - 检索：index 为空；`rg` 搜 缓存、cache、插件、plugin、codex、marketplace、市场，wiki 没有命中 → 新建 pitfall
   - preview 一次通过，指纹 `4a38d5ed9fb66cdd`；用户确认后 apply，知识库提交 `d591ba1`（save: Codex 插件改了 skill 不生效：读的是缓存副本），`kb check` 0 问题，工作区干净；草稿目录已删除
   - 发现待修项：知识库 `templates/*.md` 的日期在 init 时被替换成了 2026-11-19，没有保留占位符；以后照抄会写错日期
-- [ ] T5 Codex 跨宿主验证，AC6（gate，模块最终验收）
+- [x] T5 Codex 跨宿主验证，AC6（gate，用户 2026-11-19 批准执行）
+  - delegate 只读派单（在 tab-leader 目录）：Codex 加载缓存里的 `skills/save/SKILL.md`，doctor 退出 0，读了 SCHEMA 和 index
+  - 第 4 步检索 15 个词（Codex、缓存、cache、插件、plugin、skill、技能、副本、刷新、refresh、marketplace、upgrade、Git，以及两条命令原文），index 和全文都命中 `wiki/pitfalls/codex-plugin-cache-refresh.md`，完整读过
+  - 第 5 步处置：**没有新内容**，理由是现有页面已覆盖全部事实，没有新增内容也没有冲突 → 跨宿主去重成立
+  - 只读沙箱（`sandbox_mode` is `read-only`）不允许 mktemp 写草稿，preview 没有运行，按 Plan 预设的退路验收到第 5 步；Codex 可写模式下的 preview 留到 MVP 验收实测
+  - 知识库 HEAD 没变，工作区干净
