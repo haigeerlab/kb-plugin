@@ -110,3 +110,4 @@ README.md
 ## 变更记录
 
 - 2026-11-19 初稿。
+- 2026-11-19（T4 后修正）：`candidates show` 的提取规则补三处——去掉宿主注入的 `<task-notification>`、`<side-sessions-event>` 整块（与 `<system-reminder>` 同等处理），用户文本做 HTML 实体还原，非 user/assistant 的记录类型一律当元数据静默跳过、不计入"无法识别"；用户的非注入 `text` 块保留。范围内修正，改 1 条测试、补 1 条测试。

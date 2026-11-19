@@ -182,13 +182,33 @@ class CandidatesTests(VaultTestCase):
         self.assertIn('助手前文', result.stdout)
         self.assertIn('**** 后文', result.stdout)
 
-    def test_unknown_transcript_records_are_counted_but_known_skips_are_not(self):
+    def test_only_unrecognized_conversation_records_are_counted(self):
+        # Metadata record types (titles, API logs, snapshots, future types) are skipped
+        # silently; only malformed user/assistant records and corrupt lines are counted.
         identifier = self.add()
         with self.transcript.open('a', encoding='utf-8') as stream:
-            for record in ([], {'type': 'new-format'}, {'type': 'user', 'message': None},
+            for record in ([], {'type': 'new-format'}, {'type': 'custom-title', 'title': 'x'},
+                           {'type': 'api-request', 'body': {}}, {'type': 'user', 'message': None},
                            {'type': 'assistant', 'message': {'content': 'unsupported'}}):
                 stream.write(json.dumps(record) + '\n')
-        self.assertIn('跳过 5 条无法识别的记录。', self.run_cli('candidates', 'show', identifier).stdout)
+        self.assertIn('跳过 4 条无法识别的记录。', self.run_cli('candidates', 'show', identifier).stdout)
+
+    def test_host_injected_user_blocks_are_removed_and_entities_unescaped(self):
+        identifier = self.add()
+        with self.transcript.open('a', encoding='utf-8') as stream:
+            for content in ('<task-notification>\n<status>completed</status> NOTIFY-MARKER\n</task-notification>',
+                            '<side-sessions-event>SIDE-EVENT-MARKER</side-sessions-event>',
+                            '<bash-input>git push</bash-input><bash-stdout>a -&gt; b &amp;&amp; c</bash-stdout>',
+                            [{'type': 'text', 'text': '粘贴的文本块 USER-BLOCK'}, {'type': 'image', 'source': {}}]):
+                stream.write(json.dumps({'type': 'user', 'message': {'role': 'user', 'content': content}},
+                                        ensure_ascii=False) + '\n')
+        output = self.run_cli('candidates', 'show', identifier).stdout
+        self.assertNotIn('NOTIFY-MARKER', output)
+        self.assertNotIn('SIDE-EVENT-MARKER', output)
+        self.assertIn('<bash-input>git push</bash-input>', output)
+        self.assertIn('a -> b && c', output)
+        self.assertIn('粘贴的文本块 USER-BLOCK', output)
+        self.assertTrue(output.rstrip().endswith('跳过 1 条无法识别的记录。'))
 
     def test_truncation_keeps_redacted_tail_with_exact_count_and_annotation(self):
         identifier = self.add()

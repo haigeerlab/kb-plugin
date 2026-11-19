@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 import hashlib
+import html
 import json
 import os
 from pathlib import Path
@@ -141,21 +142,37 @@ def mark(identifier, status):
     return {'ok': True, 'candidate': record, 'corrupt_lines': corrupt}
 
 
+# Host-injected blocks that arrive as user strings but were not typed by the user.
+# <bash-input>/<bash-stdout> stay: they record commands the user ran themselves.
+INJECTED_TAGS = ('system-reminder', 'task-notification', 'side-sessions-event')
+INJECTED_RE = re.compile(r'<(%s)>.*?</\1>' % '|'.join(INJECTED_TAGS), re.DOTALL)
+
+
+def _user_text(text):
+    return html.unescape(INJECTED_RE.sub('', text))
+
+
 def _extract(record):
-    """Return text blocks and whether the record has an unknown structure."""
+    """Return text blocks and whether the record has an unknown structure.
+
+    Only user and assistant records carry conversation. Every other record type
+    (queue operations, attachments, titles, API request logs, snapshots, ...) is
+    host metadata and is skipped silently, so the unknown count only reports
+    conversation records whose shape this extractor does not understand.
+    """
     if not isinstance(record, dict):
         return [], True
     kind = record.get('type')
-    if record.get('isSidechain') is True or kind in ('queue-operation', 'attachment'):
+    if kind not in ('user', 'assistant') or record.get('isSidechain') is True:
         return [], False
     if kind == 'user' and record.get('isMeta') is True:
         return [], False
     message = record.get('message')
-    if kind not in ('user', 'assistant') or not isinstance(message, dict):
+    if not isinstance(message, dict):
         return [], True
     content = message.get('content')
     if kind == 'user' and isinstance(content, str):
-        text = re.sub(r'<system-reminder>.*?</system-reminder>', '', content, flags=re.DOTALL)
+        text = _user_text(content)
         return (['【用户】\n' + text] if text.strip() else []), False
     if not isinstance(content, list):
         return [], True
@@ -163,9 +180,14 @@ def _extract(record):
     for block in content:
         if not isinstance(block, dict):
             unknown = True
-        elif kind == 'assistant' and block.get('type') == 'text' and isinstance(block.get('text'), str):
-            texts.append('【助手】\n' + block['text'])
-        elif block.get('type') not in ('tool_result', 'thinking', 'tool_use'):
+        elif block.get('type') == 'text' and isinstance(block.get('text'), str):
+            if kind == 'assistant':
+                texts.append('【助手】\n' + block['text'])
+            else:
+                text = _user_text(block['text'])
+                if text.strip():
+                    texts.append('【用户】\n' + text)
+        elif block.get('type') not in ('tool_result', 'thinking', 'redacted_thinking', 'tool_use', 'image'):
             unknown = True
     return texts, unknown
 

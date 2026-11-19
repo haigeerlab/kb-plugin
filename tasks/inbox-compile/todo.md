@@ -23,3 +23,12 @@
     2. "跳过 N 条无法识别的记录"把已知但应跳过的记录类型也算进去了（真实会话里显示 898），统计口径会误导人
     3. bash 输出里的 HTML 实体（`&amp;`、`-&gt;`）没有还原
     4. 6 篇页面全部是孤儿页：save 和 compile 逐页处理，从来不建立页面之间的链接（这次的两篇出自同一次发版，本该互链）。这一项不属于本模块范围，记入 MVP 验收的已知缺口
+
+## 修复项（T4 发现 1–3，主会话直接修）
+
+- [x] 1 宿主注入消息：新增 `INJECTED_TAGS`（system-reminder、task-notification、side-sessions-event）整块去掉；`bash-input`/`bash-stdout` 保留
+- [x] 2 "无法识别"口径：非 user/assistant 记录一律当元数据静默跳过；只统计结构认不出的对话记录和损坏行。原测试 `test_unknown_transcript_records_are_counted_but_known_skips_are_not` 断言的是旧口径（未知类型 `new-format` 要计入），已按新口径改写，并多加了两种元数据类型
+- [x] 3 用户文本 `html.unescape`
+- 新增测试 `test_host_injected_user_blocks_are_removed_and_entities_unescaped`；全量测试通过
+- 真实会话复验（`a0c5b61b1bcd`，只统计不输出内容）：三种注入标签各 0、`&gt;`/`&amp;` 各 0、`<bash-input>` 13 条保留，"无法识别" 898 → 0
+- 发现 4（页面之间不互链）不属于本模块范围，记入 MVP 验收的已知缺口
