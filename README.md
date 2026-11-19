@@ -21,7 +21,18 @@ codex plugin add kb@kb-marketplace
 ```
 
 安装后打开新会话，运行或触发 doctor skill。两个宿主共用 `plugins/kb/skills/` 与 `plugins/kb/scripts/`。
-真实宿主安装仍待单独验收；以上命令不会在自动测试中执行。
+以上命令已在本机两个宿主实测通过（2026-11-19）；自动测试不会执行它们。
+
+### 更新插件后
+
+- **Claude Code**：本地目录市场直接读取仓库内的 `plugins/kb`，改动后打开新会话即可生效。
+- **Codex**：安装时会把插件复制到缓存（`~/.codex/plugins/cache/kb-marketplace/kb/<版本>`），skill 文本读的是这份副本。改动 skill 后重新执行一次安装命令刷新缓存，再打开新会话：
+
+  ```bash
+  codex plugin add kb@kb-marketplace
+  ```
+
+  `codex plugin marketplace upgrade` 只刷新 Git 来源的市场，对本地目录市场无效。
 
 ## 命令清单
 

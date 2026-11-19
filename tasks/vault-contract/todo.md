@@ -12,4 +12,8 @@
   - AC8：init SKILL.md 通过片段一致性测试；真实宿主验证放在 T4
   - AC9：SCHEMA.md 模板的 9 节齐全（目录、frontmatter、章节、链接与出处、标注块、inbox、index 与 log、语法子集、敏感内容）
   - 对抗抽查另外 3 项：页面不在 index 里 → `index`；`[[wikilink]]` → `link` 第 43 行；嵌套 YAML → `frontmatter` 第 11、12 行，没有崩溃
-- [ ] T4 真实知识库初始化与宿主验证（gate，模块最终验收）
+- [x] T4 真实知识库初始化与宿主验证（gate，用户 2026-11-19 批准执行）
+  - `~/Documents/haigeerlab/kb`：`init --confirm` 创建 17 项并执行了 git init；`kb check` 0 问题；知识库本地提交 `621ccf0`（未推送）
+  - Claude Code：在 tab-leader 用 `claude -p` 新开进程跑 `/kb:init`（只预览），17 项都报"跳过"，git init 也跳过，退出 0，知识库没有改动；新 skill 不用重装就能用
+  - Codex：缓存里原来只有 doctor。实测 `marketplace upgrade` 只刷新 Git 来源；**重新执行 `codex plugin add kb@kb-marketplace` 就能刷新缓存**，之后缓存和源码 diff 为空。已写进 README（补上 plugin-shell 遗留的那一项）
+  - Codex 只读派单：加载了缓存里的 `skills/init/SKILL.md`，预览"将创建 0 项、跳过 17 项"，退出 0，知识库没有改动
