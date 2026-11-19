@@ -14,6 +14,8 @@ from kblib.config import (config_path, load_aliases, load_blocklist, read_option
 from kblib.doctor import diagnose
 from kblib.checks import check as check_vault
 from kblib.init import initialize
+from kblib.lint import (fix as lint_fix, print_fix as print_lint_fix,
+                        report as lint_report, print_report as print_lint_report)
 from kblib.redaction import apply_aliases, mask_text, parse_allowlist, scan
 from kblib.save import empty_result as empty_save_result, save
 from kblib.vault import Vault
@@ -42,7 +44,7 @@ class ChineseParser(argparse.ArgumentParser):
 
 
 def build_parser():
-    parser = ChineseParser(prog="kb.py", description="kb 插件自检、知识库配置、初始化、契约检查、脱敏扫描、知识保存与检索")
+    parser = ChineseParser(prog="kb.py", description="kb 插件自检、知识库配置、初始化、契约检查、脱敏扫描、知识保存、检索与体检")
     commands = parser.add_subparsers(dest="command", required=True, metavar="子命令")
     doctor = commands.add_parser("doctor", help="检查配置与知识库目录")
     doctor.add_argument("--json", action="store_true", help="输出 JSON 对象")
@@ -78,6 +80,17 @@ def build_parser():
     searcher.add_argument('terms', nargs='+', metavar='词', help='不区分大小写的字面检索词')
     searcher.add_argument('--limit', type=int, default=10, metavar='N', help='最多返回页数，必须为正整数，默认 10')
     searcher.add_argument('--json', action='store_true', help='输出 schema 1 JSON 对象')
+    linter = commands.add_parser('lint', help='只读体检知识库并预览安全修复')
+    linter.add_argument('--json', action='store_true', help='输出 JSON 对象')
+    linter.add_argument('--stale-days', type=int, default=180, metavar='N', help='疑似过期阈值，必须为正整数，默认 180 天')
+    actions = linter.add_subparsers(dest='action', metavar='体检命令')
+    fixer = actions.add_parser('fix', help='预览或确认执行三类安全修复')
+    repairs = fixer.add_subparsers(dest='fix_action', required=True, metavar='修复命令')
+    preview = repairs.add_parser('preview', help='生成安全修复预览与指纹')
+    preview.add_argument('--json', action='store_true', help='输出 JSON 对象')
+    apply = repairs.add_parser('apply', help='确认指纹后写入并本地提交')
+    apply.add_argument('--confirm', required=True, metavar='指纹', help='用户确认的预览指纹')
+    apply.add_argument('--json', action='store_true', help='输出 JSON 对象')
     return parser
 
 
@@ -120,7 +133,7 @@ def main(argv=None):
     blocklist = []
     try:
         args = build_parser().parse_args(argv)
-        if args.command in ('check', 'redact', 'save'):
+        if args.command in ('check', 'redact', 'save', 'lint'):
             blocklist = load_blocklist()
         if args.command == "doctor":
             result = diagnose()
@@ -133,19 +146,30 @@ def main(argv=None):
             result, redacted_text = redact(args, blocklist)
         elif args.command == 'save':
             result, exit_code = save(args.draft, args.confirm if args.action == 'apply' else None)
+        elif args.command == 'lint':
+            if args.action == 'fix':
+                result, exit_code = lint_fix(args.confirm if args.fix_action == 'apply' else None)
+            else:
+                result = lint_report(Vault.load(), args.stale_days)
         elif args.command == 'ask':
             result = search(Vault.load(), args.terms, args.limit)
         else:
             result = set_vault(args.path, args.confirm)
-        if args.command != 'save':
+        if args.command != 'save' and not (args.command == 'lint' and args.action == 'fix'):
             exit_code = (0 if result['pages'] else 1) if args.command == 'ask' else (0 if result["ok"] else 1)
     except KbError as error:
-        message = mask_text(str(error), blocklist) if command in ('check', 'redact', 'save') else str(error)
+        message = mask_text(str(error), blocklist) if command in ('check', 'redact', 'save', 'lint') else str(error)
+        if command == 'lint' and message.startswith('命令或参数无效。用法：'):
+            message = ('体检用法错误。用法：kb.py lint [--json] [--stale-days N]；'
+                       'kb.py lint fix preview [--json]；'
+                       'kb.py lint fix apply --confirm <指纹> [--json]。运行 --help 查看帮助。')
         result = {"ok": False, "config": str(config_path()), "error": message}
         if command == 'save':
             result = empty_save_result(len(argv) > 1 and argv[1] == 'apply')
             result['findings'] = [{'code': 'config' if '用法' not in message else 'usage',
                                    'path': '.', 'line': 1, 'message': message}]
+        elif command == 'lint':
+            result.update(groups=[], hints=[], metrics={}, fixable=0)
         elif command in ('check', 'redact'):
             result = {"ok": False, "findings": []}
             if command == 'redact':
@@ -180,6 +204,11 @@ def main(argv=None):
             print('保存失败，未完成保存。')
     elif exit_code == 2:
         print(result["error"], file=sys.stderr)
+    elif command == 'lint':
+        if args.action == 'fix':
+            print_lint_fix(result)
+        else:
+            print_lint_report(result)
     elif command == 'ask':
         zones = {'current': '现行', 'outdated': '过时', 'disputed': '争议'}
         statuses = {'current': '现行', 'superseded': '已被取代'}

@@ -1,6 +1,6 @@
 # kb
 
-在 Claude Code 与 Codex 中使用同一个本地知识库。当前版本 `0.1.0` 已实现插件外壳、位置配置、自检、知识库初始化、契约校验、脱敏扫描、知识保存与检索，要求 Python 3.9 或更高版本，无第三方依赖。
+在 Claude Code 与 Codex 中使用同一个本地知识库。当前版本 `0.1.0` 已实现插件外壳、位置配置、自检、知识库初始化、契约校验、脱敏扫描、知识保存、检索与确定性体检，要求 Python 3.9 或更高版本，无第三方依赖。
 
 ## 安装
 
@@ -42,7 +42,7 @@ codex plugin add kb@kb-marketplace
 | `/kb:init` | 已实现 | 预览并确认后补齐知识库骨架，已有文件不覆盖 |
 | `/kb:save` | 已实现 | 草稿校验、预览，确认后保存一条经验并本地提交 |
 | `/kb:ask` | 已实现 | 只读检索知识库，基于候选页面回答并附出处，区分现行、过时与争议内容 |
-| `/kb:lint` | 未实现 | 后续实现知识库检查 |
+| `/kb:lint` | 已实现 | 按影响分组体检知识库，提示维护事项，预览并确认后执行三类安全修复 |
 
 也可以直接使用脚本。从任何目录调用时，把脚本路径替换为本仓库内的绝对路径：
 
@@ -184,6 +184,35 @@ python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py ask search 派活 �
 退出码：`0` 有命中，`1` 无命中（`--json` 仍返回合法 JSON，`pages` 为空），`2` 配置或用法错误。正常 JSON 输出为 schema 1，包含知识库绝对路径、检索词、候选页面、得分、来源、区域与原始行号；`truncated` 表示是否因页数限制省略候选。
 检索只读取配置的知识库，不写文件、不修改 Git 状态。其他插件可通过 [interface.json](plugins/kb/interface.json) 探测契约 `1.0`，参数模板、字段、退出码、版本规则与静默探测方式见[接口契约说明](plugins/kb/references/interface.md)。
 
+## 体检与安全修复
+
+运行 `/kb:lint`，或直接调用脚本；报告仅输出到终端，不落盘：
+
+```bash
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py lint
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py lint --json --stale-days 180
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py lint fix preview --json
+# After explicit user confirmation, use the preview fingerprint:
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py lint fix apply --confirm <指纹> --json
+```
+
+报告包含全部 `kb check` 问题，按导航断裂 → 内容可信度 → 格式 → 维护提示排列，每组给出数量，末尾给出摘要。维护提示包含：没有其他 wiki 页面链接的孤儿页（index 链接和自身链接不算，project 页面除外）、`current` 且距 `updated` 超过阈值的疑似过期页、未被任何 wiki frontmatter `raw` 引用的 inbox 积压。
+默认过期阈值为 180 天，`--stale-days N` 可指定正整数；恰好 180 天不报。任意 save 日志条目正文中写明知识库相对路径 `inbox/…md` 的文件，会从积压中排除；“没有新内容”的 save 也应按此记录路径。
+维护提示不影响 `kb check` 或 lint 的 check 级结果。规模指标单列 wiki 页数与 index.md 字节数，超过 300 页、40960 字节时提示；ask 尚未记录读取文件数，平均值如实显示“暂无数据”。
+
+安全修复只生成以下三类草稿：
+
+- wiki 页未进 index：在对应类型二级标题下补 `- [title](wiki/目录/文件.md) — （待补摘要） · updated`。
+- index 指向不存在的页面：删除该目录行。
+- wiki 页面中的库内 Markdown 链接目标不存在，且 `wiki/` 下恰好只有一个同名文件：改为正确相对路径，保留锚点；有多个候选时不修。
+
+preview 复用 save 的共享写入流程，在保留完整 Git 历史的叠加副本上全量检查，给出 diff 与 16 位指纹；没有可修复项时退出成功并说明“无需修复”。全量检查仍有问题时拒绝写入，需要先处理这些问题。
+用户明确确认后，apply 重新生成草稿、校验指纹与全部契约，通过后原子写入，并将修复与追加的 `## [今天] lint | 安全修复 N 处` 日志一起本地提交，提交信息为 `lint: 安全修复 N 处`，不推送。
+修复仅允许修改 `index.md`、`log.md` 与 `wiki/` 下已存在的页面，不涉及 inbox/raw，不受 save 恰好一个 inbox 的限制。知识库需已有 HEAD 且工作区干净；写入失败回滚，提交失败保留文件与暂存状态并报告原因。
+
+退出码：`lint` 为 `0` 无 check 级问题（可有提示）、`1` 有 check 级问题、`2` 用法或配置错误；`lint fix` 为 `0` 成功（含无需修复）、`1` 校验、写入或提交失败、`2` 用法或配置错误、`3` 指纹不匹配。
+`--json` 报告包含有序 `groups`、`hints`、`metrics`、`fixable` 数量与 `summary`；`metrics.ask_average_reads.value` 为 `null`，并带 `reason`。修复结果另含 `findings`、`created`、`modified`，preview 带 `diff` 和 `fingerprint`，apply 带 `commit`。
+
 ## 卸载
 
 Claude Code：
@@ -216,3 +245,5 @@ python3 -B scripts/check-manifests.py
 知识库测试把合法样例和 AC6 三段素材样例复制到临时目录，用临时 git 仓库提交基线；覆盖全部 13 个检查码、证据回归、只读检查和初始化不覆盖行为。脱敏测试在运行时拼接假密钥，覆盖规则反例、别名、哈希放行、输出打码，以及会话摘录的 3 处命中与 1 处替换。vendor 原文件及许可证的 SHA-256 也在测试中核验。
 save 测试覆盖路径白名单、脱敏与代号替换、完整历史校验、指纹失效、写入回滚和提交失败；另在 init 创建的临时知识库中，用三段素材连续保存新坑页、新决策页和推翻旧结论的 outdated 块，每次检查为零问题，并核验三个 save 提交与 inbox 原文不可改性。
 ask 测试覆盖区域与代码块、整页 superseded、计分排序、截断、多词字面匹配、JSON 契约与退出码，以及干净和脏知识库中文件及 Git 状态保持不变；interface 检查在临时副本构造 ask skill，覆盖契约缺失、格式错误、版本和技能引用。
+
+lint 测试覆盖提示边界、日志排除、分组与规模指标、四类问题验收、三类安全修复、歧义候选、指纹失效、修复与日志同次提交，以及只读前后文件与 Git 状态不变；共享 writer 的重构由原有 save 测试和 lint 测试共同保护。
