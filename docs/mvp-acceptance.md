@@ -59,6 +59,30 @@ MVP 验收通过后，进入 Phase 5（集成）：能力图里的 inbox-compile
 - 复测：Codex 可写执行 save → 预览转给用户 → 用户确认 → apply 写入后提交失败、生成待提交记录 → Codex 只转告命令、不自行补提交 → Claude Code 运行 `commit-pending` → 知识库提交 `68f59b4`，`kb check` 0 问题。
 - 结论：**PRD 第 9 节第 4 条（Claude Code 和 Codex 都能用）成立。** Codex 侧 save 需要多一步 `commit-pending`，原因是 delegate 沙箱不能写 `.git`；交互式 Codex 能否通过提权一步完成，还没有实测。
 
+### V6 不绕过编译、不越界写入（2026-11-19）— 通过
+
+用 grep 枚举 `plugins/kb/scripts/` 下所有写入点（`write_text`、`write_bytes`、`open(...'w'/'x')`、`os.replace`、`unlink`、`rmtree`、`mkdir`、`copytree`、`mkstemp`、`chmod`）以及 git 写操作（`init`、`clone`、`add`、`commit`），逐个归类：
+
+| 写入点 | 写到哪里 | 何时 |
+|---|---|---|
+| `config.py:106-107` | `~/.config/kb/config.json`（或 `KB_CONFIG`） | 只有 `config set-vault --confirm` |
+| `init.py:35,38,43` | 知识库：`git init`、建骨架目录、用 `open('x')` 只新建缺失的 SCHEMA.md、index.md、log.md、`templates/*.md` | 只有 `init --confirm`；`'x'` 模式不会覆盖已有文件；**不写任何 wiki 页面** |
+| `writer.py:88-113` | 系统临时目录（`TemporaryDirectory`）里的知识库克隆副本 | preview 和 apply 的叠加校验；退出时自动清理 |
+| `writer.py:142-192`（`atomic_write`） | 知识库内，经过 `target_path` 校验：绝对路径、`..`、反斜杠、符号链接、resolve 后越出知识库都会被拒绝 | 只能经由 `publish`（save apply、lint fix apply）和待提交记录 |
+| `writer.py:201,205` | 知识库 git：`add` 和 `commit --only`，只针对本次写入的路径 | publish 成功之后 |
+| `writer.py:289,354` | 知识库根目录 `.kb-pending.json`（写、删） | 提交失败时写；`commit-pending` 成功后删 |
+
+另外核对：
+- 插件没有 `hooks/` 目录，两份清单都没有 hooks 字段，**MVP 里不存在任何自动触发的写入**；
+- 写 wiki 的入口只有 save 和 lint fix 两个白名单：save 在 `save.py:37,45`，只允许 inbox/ 新文件、wiki/、index.md、log.md；lint 在 `lint.py:246`，只允许 index.md、log.md 和已存在的 wiki 页。两者都走 `writer.publish` 的叠加校验和指纹；
+- 没有任何代码写知识库、`~/.config/kb/`、系统临时目录以外的位置；kb 不会修改别的仓库，也不会修改任何规则文件。
+
+结论：**PRD 第 9 节第 6 条成立。** 这一条目前是"由结构保证"，Phase 5 加入自动采集（session-capture、delegate-lessons）后，需要按同样方法复核一次。
+
+### V7 脱敏（2026-11-19）— 通过
+
+redaction 模块测试（含运行时拼接的假密钥、全输出不泄露），以及 V4 和 F4 两次 Codex save 的预览：都是 0 处命中、0 处代号替换，没有写入真实邮箱或用户主目录路径。
+
 ### 待办
 
 - ~~Codex 下 save / lint fix 提交受沙箱限制~~：已修复（`a9b7333`），见上方 V4 复测。
