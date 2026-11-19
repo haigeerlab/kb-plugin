@@ -111,7 +111,8 @@ def set_vault(value: str, confirm: bool = False) -> dict:
 
 
 CAPTURE_DEFAULTS = {'session_capture': True, 'capture_min_user_messages': 2,
-                    'capture_ignore_dirs': []}
+                    'capture_ignore_dirs': [], 'delegate_capture': True,
+                    'delegate_min_answer_bytes': 200}
 
 
 def _capture_config(environ):
@@ -133,6 +134,11 @@ def _capture_settings(data):
     settings = {key: data.get(key, default) for key, default in CAPTURE_DEFAULTS.items()}
     if type(settings['session_capture']) is not bool:
         raise KbError('采集配置：session_capture 必须是布尔值')
+    if type(settings['delegate_capture']) is not bool:
+        raise KbError('采集配置：delegate_capture 必须是布尔值')
+    minimum_bytes = settings['delegate_min_answer_bytes']
+    if type(minimum_bytes) is not int or minimum_bytes < 0:
+        raise KbError('采集配置：delegate_min_answer_bytes 必须是非负整数')
     minimum = settings['capture_min_user_messages']
     if type(minimum) is not int or minimum <= 0:
         raise KbError('采集配置：capture_min_user_messages 必须是正整数')
@@ -156,7 +162,10 @@ def set_capture(enabled, min_user_messages=None, ignore_dirs=None, confirm=False
         content['capture_min_user_messages'] = min_user_messages
     if ignore_dirs is not None:
         content['capture_ignore_dirs'] = ignore_dirs
-    content.update(_capture_settings(content))
+    settings = _capture_settings(content)
+    # Keep implicit delegate defaults out of existing session-only config files.
+    content.update({key: value for key, value in settings.items()
+                    if not key.startswith('delegate_') or key in content})
     if confirm:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)

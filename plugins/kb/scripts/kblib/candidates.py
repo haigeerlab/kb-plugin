@@ -42,7 +42,11 @@ def _read_queue(environ=os.environ):
             if (not isinstance(record, dict)
                     or any(not isinstance(record.get(key), str) for key in FIELDS)
                     or not record['session_id'] or record['status'] not in STATUSES
-                    or record['id'] != _identifier(record['session_id'])):
+                    or record.get('source', 'session') not in ('session', 'delegate')
+                    or record['id'] != _identifier(record['session_id'], record.get('source', 'session'))
+                    or (record.get('source') == 'delegate'
+                        and any(not isinstance(record.get(key), str)
+                                for key in ('runId', 'repository', 'run_status')))):
                 raise ValueError
             datetime.fromisoformat(record['ended_at'])
         except (ValueError, UnicodeError):
@@ -77,7 +81,9 @@ def _write_queue(rows, changed, environ=os.environ):
             temporary.unlink(missing_ok=True)
 
 
-def _identifier(session_id):
+def _identifier(session_id, source='session'):
+    if source == 'delegate':
+        session_id = 'delegate:' + session_id
     return hashlib.sha256(session_id.encode('utf-8')).hexdigest()[:12]
 
 
@@ -87,7 +93,8 @@ def add(session_id, transcript_path, cwd, reason, environ=os.environ):
         raise KbError('候选入队参数必须是非空字符串，且不能包含空字符')
     rows, corrupt = _read_queue(environ)
     index = next((index for index, (_, record) in enumerate(rows)
-                  if record is not None and record['session_id'] == session_id), len(rows))
+                  if record is not None and record.get('source', 'session') == 'session'
+                  and record['session_id'] == session_id), len(rows))
     old_status = rows[index][1]['status'] if index < len(rows) else 'pending'
     record = {'id': _identifier(session_id), 'session_id': session_id,
               'transcript_path': str(Path(transcript_path).expanduser().absolute()),
@@ -100,6 +107,22 @@ def add(session_id, transcript_path, cwd, reason, environ=os.environ):
         rows[index][1] = record
     _write_queue(rows, {index}, environ)
     return {'ok': True, 'candidate': record, 'corrupt_lines': corrupt}
+
+
+def add_delegate(snapshot, path, environ=os.environ):
+    rows, corrupt = _read_queue(environ)
+    run_id = snapshot['runId']
+    identifier = _identifier(run_id, 'delegate')
+    if any(record is not None and record['id'] == identifier for _, record in rows):
+        return
+    record = {'id': identifier, 'source': 'delegate', 'session_id': run_id,
+              'runId': run_id, 'repository': snapshot['repository'], 'run_status': snapshot['status'],
+              'transcript_path': str(path.absolute()), 'cwd': snapshot['repository'],
+              'reason': 'Codex 执行结果',
+              'ended_at': datetime.fromisoformat(snapshot['endedAt'].replace('Z', '+00:00')).isoformat(),
+              'status': 'pending'}
+    rows.append([b'', record])
+    _write_queue(rows, {len(rows) - 1}, environ)
 
 
 def list_candidates(vault=None):
@@ -119,7 +142,9 @@ def list_candidates(vault=None):
             expired.append(dict(record))
             continue
         ended_at = datetime.fromisoformat(record['ended_at']).astimezone()
-        items.append({'kind': 'candidate', **record, 'expiring': now - ended_at > timedelta(days=25)})
+        items.append({'kind': 'candidate', **record, 'source': record.get('source', 'session'),
+                      'expiring': record.get('source', 'session') == 'session'
+                                  and now - ended_at > timedelta(days=25)})
     if changed:
         _write_queue(rows, changed)
     return {'ok': True, 'items': items, 'expired': expired, 'corrupt_lines': corrupt}
@@ -200,6 +225,20 @@ def show(identifier, max_chars=40000):
     index, record = _find(rows, identifier)
     if record['status'] == 'expired':
         raise CandidateError('会话记录已过期，无法查看；重新入队后再试')
+    if record.get('source') == 'delegate':
+        try:
+            snapshot = json.loads(Path(record['transcript_path']).read_text(encoding='utf-8'))
+        except FileNotFoundError:
+            record['status'] = 'expired'
+            _write_queue(rows, {index})
+            raise CandidateError('delegate 快照已过期或不存在，无法查看') from None
+        except (OSError, UnicodeError, ValueError):
+            raise CandidateError('无法读取 delegate 快照，请检查格式与权限') from None
+        text = mask_text(json.dumps(snapshot, ensure_ascii=False, indent=2), blocklist)
+        truncated = max(0, len(text) - max_chars)
+        if truncated:
+            text = f'已截断前 {truncated} 字\n' + text[-max_chars:]
+        return {'ok': True, 'text': text + '\n', 'skipped': 0, 'corrupt_lines': corrupt}
     texts, skipped = [], 0
     try:
         with Path(record['transcript_path']).open('rb') as stream:
@@ -237,6 +276,9 @@ def print_result(result, action, blocklist=()):
         for item in result['items']:
             if item['kind'] == 'inbox':
                 print('inbox 积压：' + mask_text(item['path'], blocklist))
+            elif item.get('source') == 'delegate':
+                print(mask_text(f"候选 {item['id']}：delegate；{Path(item['repository']).name}；"
+                                f"{item['run_status']}；{item['ended_at']}", blocklist))
             else:
                 print(mask_text(f"候选 {item['id']}：{item['reason']}；{item['cwd']}；{item['ended_at']}"
                                 + ('；即将过期' if item['expiring'] else ''), blocklist))

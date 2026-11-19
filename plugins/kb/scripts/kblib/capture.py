@@ -33,7 +33,7 @@ def log_error(reason, environ, session_id=None):
         pass
 
 
-def run_hook(stdin_text, environ):
+def _capture_session(stdin_text, environ):
     session_id = None
     try:
         event = json.loads(stdin_text)
@@ -68,7 +68,18 @@ def run_hook(stdin_text, environ):
         log_error(reason, environ, session_id)
 
 
+def run_hook(stdin_text, environ):
+    _capture_session(stdin_text, environ)
+    try:
+        from . import delegate_lessons
+        if load_capture(environ)['delegate_capture']:
+            delegate_lessons.scan(environ, record_empty=False)
+    except BaseException as error:
+        log_error('delegate 扫描失败：' + type(error).__name__, environ)
+
+
 def status(environ=os.environ):
+    from .delegate_lessons import scan_status
     settings = load_capture(environ)
     try:
         rows, corrupt = candidates._read_queue(environ)
@@ -80,17 +91,22 @@ def status(environ=os.environ):
             tail = []
     except (OSError, UnicodeError, KbError):
         raise KbError('无法读取采集状态，请检查候选队列与日志的路径和权限') from None
-    return {'ok': True, **settings,
+    return {'ok': True, **settings, **scan_status(environ),
             'pending': sum(record is not None and record['status'] == 'pending' for _, record in rows),
             'corrupt_lines': corrupt, 'log': str(path), 'log_tail': tail,
-            'notice': '只记录会话 ID、记录路径、工作目录与结束原因，不记录会话内容。'
-                      '关闭：kb.py config set-capture --enabled false --confirm。'}
+            'notice': '会话采集只记录会话 ID、记录路径、工作目录与结束原因，不记录会话内容。'
+                      '关闭会话采集：kb.py config set-capture --enabled false --confirm。'
+                      'delegate 另存本机答复快照；关闭请在配置中设置 delegate_capture: false。'}
 
 
 def print_status(result):
     print('会话结束采集：' + ('开启' if result['session_capture'] else '关闭'))
     print(f"用户消息阈值：{result['capture_min_user_messages']}")
     print('排除目录：' + ('、'.join(result['capture_ignore_dirs']) or '无'))
+    print('delegate_capture：' + ('开启' if result['delegate_capture'] else '关闭'))
+    print(f"delegate_min_answer_bytes：{result['delegate_min_answer_bytes']}")
+    print(f"delegate 最近扫描：{result['delegate_last_scan_at'] or '暂无'}；"
+          f"处理 {result['delegate_last_scan_processed']} 个新结果")
     print(f"待处理候选：{result['pending']}；日志：{result['log']}")
     for line in result['log_tail']:
         print(line)

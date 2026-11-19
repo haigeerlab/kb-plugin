@@ -253,6 +253,39 @@ python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py config set-capture -
 
 hook 始终静默退出 `0`，超时为 5 秒。异常原因追加到 `~/.local/state/kb/capture.log`（设置 `KB_STATE_DIR` 后为该目录下的 `capture.log`），每行包含本地 ISO 时间、原因和可取得的会话 ID。日志超过 1MB 后保留后半部完整行；日志无法写入时也静默退出。正常过滤或成功入队不写日志。
 
+## Codex 执行经验回流
+
+Claude Code 的 SessionEnd hook 在原有会话候选采集之后，顺带读取 delegate 的公开结果文件和答复文件，将值得整理的执行结果保存为本机快照，加入 `source: delegate` 的候选队列。它独立于 `session_capture`、会话消息阈值和排除目录；不读取 Codex 自己的会话文件，不自动写入知识库。下次整理时，仍由你选择编译或丢弃。
+
+只处理 `schema: 1`、`kind: run`，且状态为 `done`、`failed`、`timeout`、`unmarked`、`unreaped` 或 `empty` 的结果。`review`、`needs-input` 等状态跳过。同一 `chainRoot` 选择当前最后结束的 run，只收集一次；链已收集后不会追加后来者。实际答复少于字节阈值且所有命令均成功时跳过；短答复含失败命令仍收集。损坏 JSON、字段缺失、不支持的 schema、缺失答复和不可访问的目录会跳过，并在状态目录的 `capture.log` 记录原因。
+
+配置沿用 `KB_CONFIG` 指定的 JSON 文件（默认 `~/.config/kb/config.json`），新增字段可与现有字段一起维护：
+
+```json
+{
+  "version": 1,
+  "vault": "/绝对路径/知识库",
+  "delegate_capture": true,
+  "delegate_min_answer_bytes": 200
+}
+```
+
+`delegate_capture` 默认 `true`，设为 `false` 会同时关闭 hook 和手动扫描；`delegate_min_answer_bytes` 默认 `200`，允许非负整数，`0` 表示不按短答复过滤。修改阈值不重新处理此前已判定的结果。`config set-capture` 保留已设置的 delegate 字段。
+
+```bash
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py candidates scan-delegate
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py candidates scan-delegate --json
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py candidates list
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py candidates show <候选ID>
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py capture status --json
+```
+
+扫描按 runId 排序，每次最多处理 20 个新结果，其余留待下次；已收集或已跳过的 runId 都记录在状态目录下的 `delegate-scan.json`，后续不再重复判定。手动扫描只报告数量、runId 和理由，不输出答复。`capture status` 显示开关、字节阈值、最近一次扫描时间和处理个数；hook 遇到空目录时不创建扫描状态。
+
+快照位于 `${KB_STATE_DIR:-~/.local/state/kb}/delegate/<runId>.json`，包含 runId、状态、仓库、读写模式、起止时间、改动文件、失败命令和答复。失败命令截断到 300 个字符，答复截断到 20000 个字符，不复制原始结果文件。`candidates list` 显示仓库名、状态和时间，`show` 对快照内容使用现有打码规则及本地黑名单；会话候选缺少 `source` 时按 `session` 读取，旧队列无需迁移。
+
+**delegate 目录始终只读**：默认读取 `${TMPDIR:-/tmp}/delegate`，可用 `KB_DELEGATE_DIR` 指向其他目录；扫描不写入、不修改、不删除其中任何文件，只向本机状态目录写快照、队列、扫描状态和日志。测试同时用临时 `KB_CONFIG`、`KB_STATE_DIR`、`KB_DELEGATE_DIR` 隔离真实数据。
+
 ## 查询知识库
 
 在任意项目中运行 `/kb:ask <问题>`，或直接调用确定性的只读检索脚本：
@@ -321,11 +354,15 @@ codex plugin marketplace remove kb-marketplace
 在仓库根目录执行：
 
 ```bash
-python3 -m unittest discover -s tests -v
+kb_test_root=$(mktemp -d)
+mkdir "$kb_test_root/delegate"
+KB_CONFIG="$kb_test_root/config.json" KB_STATE_DIR="$kb_test_root/state" \
+  KB_DELEGATE_DIR="$kb_test_root/delegate" python3 -m unittest discover -s tests -v
+rm -rf "$kb_test_root"
 python3 -B scripts/check-manifests.py
 ```
 
-所有测试都将 `KB_CONFIG` 指向临时目录，不读写真实配置，不安装插件。
+全量测试通过临时 `KB_CONFIG`、`KB_STATE_DIR` 和空的 `KB_DELEGATE_DIR` 隔离真实数据；各测试再按需覆盖为自己的临时目录。不读写真实配置、状态、delegate 结果或知识库，不安装插件。
 根目录解析测试使用假的 `codex`，清单失败测试只修改临时副本。
 知识库测试把合法样例和 AC6 三段素材样例复制到临时目录，用临时 git 仓库提交基线；覆盖全部 13 个检查码、证据回归、只读检查和初始化不覆盖行为。脱敏测试在运行时拼接假密钥，覆盖规则反例、别名、哈希放行、输出打码，以及会话摘录的 3 处命中与 1 处替换。vendor 原文件及许可证的 SHA-256 也在测试中核验。
 save 测试覆盖路径白名单、脱敏与代号替换、完整历史校验、指纹失效、写入回滚和提交失败；另在 init 创建的临时知识库中，用三段素材连续保存新坑页、新决策页和推翻旧结论的 outdated 块，每次检查为零问题，并核验三个 save 提交与 inbox 原文不可改性。

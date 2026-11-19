@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import sys
 
-from kblib import KbError, candidates, capture
+from kblib import KbError, candidates, capture, delegate_lessons
 from kblib.ask import search
 from kblib.compile import compile as compile_draft
 from kblib.config import (config_path, load_aliases, load_blocklist, read_optional_text,
@@ -44,7 +44,7 @@ class ChineseParser(argparse.ArgumentParser):
             "kb.py redact <文件|-> [--json | --apply-aliases]；"
             "kb.py save preview <草稿目录> [--json]；"
             "kb.py save apply <草稿目录> --confirm <指纹> [--json]；"
-            "kb.py candidates add|list|show|mark …；"
+            "kb.py candidates add|list|show|mark|scan-delegate …；"
             "kb.py capture status [--json]；kb.py capture hook；"
             "kb.py config set-capture --enabled true|false [--min-user-messages N] [--ignore-dir 路径 ...] [--confirm] [--json]；"
             "kb.py compile preview|apply <草稿目录> …；"
@@ -124,6 +124,8 @@ def build_parser():
         adder.add_argument('--' + flag, required=True, help=label)
     listing = actions.add_parser('list', help='列出 inbox 积压与待处理候选')
     listing.add_argument('--json', action='store_true', help='输出 JSON 对象')
+    scanner = actions.add_parser('scan-delegate', help='只读扫描 delegate 结果并保存本机候选快照')
+    scanner.add_argument('--json', action='store_true', help='输出 JSON 对象，不输出答复内容')
     shower = actions.add_parser('show', help='提取并打码会话文本')
     shower.add_argument('id', metavar='候选ID', help='候选短哈希')
     shower.add_argument('--max-chars', type=int, default=40000, metavar='N', help='最多保留的末尾字数，默认 40000')
@@ -198,6 +200,8 @@ def main(argv=None):
                 result = candidates.list_candidates()
             elif args.action == 'show':
                 result = candidates.show(args.id, args.max_chars)
+            elif args.action == 'scan-delegate':
+                result = delegate_lessons.scan()
             else:
                 result = candidates.mark(args.id, args.status)
         elif args.command in ('save', 'compile'):
@@ -255,7 +259,10 @@ def main(argv=None):
         print(json.dumps(result, ensure_ascii=False))
     elif command == 'candidates':
         if result['ok']:
-            candidates.print_result(result, args.action, blocklist)
+            if args.action == 'scan-delegate':
+                delegate_lessons.print_result(result, blocklist)
+            else:
+                candidates.print_result(result, args.action, blocklist)
         else:
             print(result['error'], file=sys.stderr)
     elif command == 'commit-pending':

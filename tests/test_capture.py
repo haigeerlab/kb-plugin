@@ -27,7 +27,9 @@ class CaptureTests(unittest.TestCase):
         self.vault = self.base / '知识库'
         self.vault.mkdir()
         (self.vault / 'keep.md').write_text('知识库原文', encoding='utf-8')
-        self.env = dict(os.environ, KB_CONFIG=str(self.config), KB_STATE_DIR=str(self.state))
+        (self.base / 'delegate-empty').mkdir()  # 隔离 delegate 扫描，不读本机真实目录
+        self.env = dict(os.environ, KB_CONFIG=str(self.config), KB_STATE_DIR=str(self.state),
+                        KB_DELEGATE_DIR=str(self.base / 'delegate-empty'))
         self.transcript = self.base / 'session.jsonl'
         self.write_transcript([self.user('第一句'), self.user('第二句')])
         self.event = {'session_id': 'session-one', 'transcript_path': str(self.transcript),
@@ -408,7 +410,9 @@ class CaptureManifestTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name).resolve()
         self.copy = self.base / 'copy'
-        self.env = dict(os.environ, KB_CONFIG=str(self.base / 'config.json'), KB_STATE_DIR=str(self.base / 'state'))
+        (self.base / 'delegate-empty').mkdir()  # 隔离 delegate 扫描，不读本机真实目录
+        self.env = dict(os.environ, KB_CONFIG=str(self.base / 'config.json'), KB_STATE_DIR=str(self.base / 'state'),
+                        KB_DELEGATE_DIR=str(self.base / 'delegate-empty'))
         for relative in ('.claude-plugin/marketplace.json', 'plugins/kb/.claude-plugin/plugin.json',
                          'plugins/kb/.codex-plugin/plugin.json', 'plugins/kb/interface.json',
                          'plugins/kb/skills/ask/SKILL.md', 'plugins/kb/scripts/kb.py', 'scripts/check-manifests.py'):
