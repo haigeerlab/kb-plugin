@@ -36,7 +36,11 @@ class VaultCliTests(VaultTestCase):
                           'wiki/patterns', 'wiki/projects', 'templates', '.git'):
             self.assertTrue((self.root / directory).is_dir(), directory)
         for kind in ('pitfall', 'decision', 'tech', 'pattern', 'project'):
-            self.assertTrue((self.root / 'templates' / (kind + '.md')).is_file())
+            template = (self.root / 'templates' / (kind + '.md')).read_text(encoding='utf-8')
+            # Page templates are reused later, so they must keep a date placeholder.
+            self.assertIn('created: YYYY-MM-DD', template)
+            self.assertNotRegex(template, r'\d{4}-\d{2}-\d{2}')
+        self.assertRegex((self.root / 'log.md').read_text(encoding='utf-8'), r'## \[\d{4}-\d{2}-\d{2}\] init')
         result = self.run_cli('check', '--json')
         self.assertEqual(result.returncode, 0, result)
         self.assertEqual(json.loads(result.stdout), {'ok': True, 'findings': []})

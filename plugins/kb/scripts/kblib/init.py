@@ -16,8 +16,12 @@ def initialize(confirm=False):
     try:
         for path in sorted(TEMPLATES.rglob('*.md')):
             relative = path.relative_to(TEMPLATES)
-            destination = ('templates/' + relative.name) if relative.parts[0] == 'pages' else relative.as_posix()
-            content[destination] = path.read_text(encoding='utf-8').replace('{{date}}', today().isoformat())
+            is_page = relative.parts[0] == 'pages'
+            destination = ('templates/' + relative.name) if is_page else relative.as_posix()
+            # Page templates are reused on later days, so they keep a placeholder; root files
+            # (e.g. the init log entry) record the real date.
+            date = 'YYYY-MM-DD' if is_page else today().isoformat()
+            content[destination] = path.read_text(encoding='utf-8').replace('{{date}}', date)
         needs_git = not is_git_repository(root)
         create, skip = [], []
         for relative in (*[d + '/' for d in DIRECTORIES], *content):
