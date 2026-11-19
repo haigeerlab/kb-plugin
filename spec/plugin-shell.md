@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved 9fcf4655b22b -->
+<!-- spec-guard: review approved 5237a28c6233 -->
 
 # Spec: plugin-shell
 

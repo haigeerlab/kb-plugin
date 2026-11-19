@@ -19,3 +19,7 @@
   - `codex plugin list --available --json` 里 kb 条目带 `installed`、`enabled`、`source.path` 三个字段，和解析片段用的完全一致；清空 Claude 环境变量后实跑片段，经 Codex 回退路径解析出 ROOT，doctor 通过
   - AC3：delegate 只读派单 run `20261119110744.35435`（在 tab-leader 目录，effort low）。Codex 自行加载了 `~/.codex/plugins/cache/kb-marketplace/kb/0.1.0/skills/doctor/SKILL.md`，ROOT 解析为仓库内的 `plugins/kb`，doctor 退出 0
   - 已知差异：Codex 读的是**缓存副本**里的 SKILL.md（脚本仍按 `source.path` 从源码目录运行），Claude Code 直接读源码目录。所以以后改了 skill 文本，Codex 侧要刷新缓存，具体刷新命令待下一次改 skill 时实测后写进 README
+
+## 最终验收
+
+- [x] 用户 2026-11-19 批准最终验收（同时批准了 Spec 里新增的那行变更记录）
