@@ -21,6 +21,36 @@ def config_path(environ: Mapping[str, str] = os.environ) -> Path:
     return Path(environ.get(CONFIG_ENV) or DEFAULT_CONFIG).expanduser().absolute()
 
 
+def read_optional_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding='utf-8')
+    except FileNotFoundError:
+        return ''
+    except (OSError, UnicodeError):
+        raise KbError('无法读取脱敏配置文件，需要可读取的 UTF-8 文本') from None
+
+
+def load_blocklist(environ: Mapping[str, str] = os.environ) -> list:
+    text = read_optional_text(config_path(environ).parent / 'blocklist.txt')
+    return [line.strip() for line in text.splitlines() if line.strip() and not line.lstrip().startswith('#')]
+
+
+def load_aliases(environ: Mapping[str, str] = os.environ) -> dict:
+    path = config_path(environ).parent / 'aliases.json'
+    text = read_optional_text(path)
+    if not text and not path.exists():
+        return {}
+    try:
+        aliases = json.loads(text)
+    except ValueError:
+        raise KbError('代号配置 aliases.json：JSON 格式错误') from None
+    if (not isinstance(aliases, dict)
+            or any(not isinstance(name, str) or not name or not isinstance(alias, str) or not alias
+                   for name, alias in aliases.items())):
+        raise KbError('代号配置 aliases.json：必须是非空名称到非空代号字符串的 JSON 对象')
+    return aliases
+
+
 def configuration_error(path: Path, reason: str) -> VaultNotConfigured:
     entry = shlex.quote(str(Path(__file__).resolve().parents[1] / "kb.py"))
     return VaultNotConfigured(

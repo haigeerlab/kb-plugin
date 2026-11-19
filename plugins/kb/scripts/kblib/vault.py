@@ -8,7 +8,7 @@ import subprocess
 from typing import Optional
 
 from . import KbError
-from .config import resolve_vault
+from .config import config_path, resolve_vault
 from .markdown import parse_frontmatter
 
 
@@ -64,6 +64,7 @@ class Vault:
     date: date
     immutable_paths: tuple
     git_error: Optional[str]
+    config_file: Optional[Path] = None
 
     @classmethod
     def load(cls, paths=(), environ=None):
@@ -94,7 +95,7 @@ class Vault:
                     if not path.resolve().is_relative_to(root) or not path.is_file():
                         continue
                     files.add(relative)
-                    if path.suffix.lower() == '.md' or relative.startswith(('inbox/', 'raw/')):
+                    if path.suffix.lower() == '.md' or relative.startswith(('inbox/', 'raw/', 'wiki/')):
                         try:
                             documents[relative] = Document(relative, path.read_text(encoding='utf-8'))
                         except (OSError, UnicodeError):
@@ -120,7 +121,8 @@ class Vault:
         except OSError:
             error = '无法运行 git；请安装 git 后运行 kb.py init 初始化知识库'
         return cls(root, documents, frozenset(files), errors,
-                   frozenset(selected) if selected is not None else None, today(), changes, error)
+                   frozenset(selected) if selected is not None else None, today(), changes, error,
+                   config_path(os.environ if environ is None else environ))
 
     def pages(self):
         return [doc for path, doc in sorted(self.documents.items())

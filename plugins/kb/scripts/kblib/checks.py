@@ -7,6 +7,8 @@ import re
 from urllib.parse import unquote, urlsplit
 
 from . import evidence, markdown
+from .config import load_blocklist, read_optional_text
+from .redaction import mask_text, parse_allowlist, scan
 from .vault import REQUIRED_SECTIONS, SCHEMA_VERSION, TYPE_DIRS, Vault
 
 
@@ -350,10 +352,34 @@ def check_inbox(vault: Vault) -> list[Finding]:
     return findings
 
 
+def check_redaction(vault: Vault) -> list[Finding]:
+    environ = {'KB_CONFIG': str(vault.config_file)} if vault.config_file is not None else {}
+    blocklist = load_blocklist(environ)
+    allow_entries, errors = parse_allowlist(read_optional_text(vault.root / 'redaction-allow.txt'))
+    # Allowlist format errors carry a plain message in `masked`; they are not a sensitive-content category.
+    findings = [Finding('redaction', f.path, f.line, f.masked) for f in errors]
+    found = []
+    for path, doc in sorted(vault.documents.items()):
+        if (path.startswith(('inbox/', 'raw/', 'wiki/')) or path in ('index.md', 'log.md')):
+            if vault.selected is None or path in vault.selected or path in ('index.md', 'log.md'):
+                found.extend(scan(doc.text, path, blocklist, allow_entries))
+    findings += [Finding('redaction', f.path, f.line, f'{f.category}：{f.masked}（第 {f.column} 列）')
+                 for f in found]
+    for path in sorted(vault.read_errors):
+        if (path.startswith(('inbox/', 'raw/', 'wiki/')) or path in ('index.md', 'log.md')):
+            if vault.selected is None or path in vault.selected or path in ('index.md', 'log.md'):
+                findings.append(Finding('redaction', path, 1, '无法扫描文件，需要可读取的 UTF-8 文本'))
+    return findings
+
+
 CHECKS = (check_schema_version, check_frontmatter, check_sections, check_filename,
           check_link, check_raw_ref, check_evidence, check_callout, check_index,
-          check_log, check_immutable, check_inbox)
+          check_log, check_immutable, check_inbox, check_redaction)
 
 
 def check(vault: Vault) -> list[Finding]:
-    return [finding for function in CHECKS for finding in function(vault)]
+    findings = [finding for function in CHECKS for finding in function(vault)]
+    environ = {'KB_CONFIG': str(vault.config_file)} if vault.config_file is not None else {}
+    blocklist = load_blocklist(environ)
+    return [Finding(f.code, mask_text(f.path, blocklist), f.line, mask_text(f.message, blocklist))
+            for f in findings]

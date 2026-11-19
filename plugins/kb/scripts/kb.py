@@ -4,13 +4,16 @@
 import argparse
 from dataclasses import asdict
 import json
+from pathlib import Path
 import sys
 
 from kblib import KbError
-from kblib.config import config_path, set_vault
+from kblib.config import (config_path, load_aliases, load_blocklist, read_optional_text,
+                          resolve_vault, set_vault)
 from kblib.doctor import diagnose
 from kblib.checks import check as check_vault
 from kblib.init import initialize
+from kblib.redaction import apply_aliases, mask_text, parse_allowlist, scan
 from kblib.vault import Vault
 
 
@@ -28,12 +31,13 @@ class ChineseParser(argparse.ArgumentParser):
         raise KbError(
             "命令或参数无效。用法：kb.py doctor [--json]；"
             "kb.py config set-vault <路径> [--confirm] [--json]；"
-            "kb.py init [--confirm] [--json]；kb.py check [--json] [路径 ...]。运行 --help 查看帮助。"
+            "kb.py init [--confirm] [--json]；kb.py check [--json] [路径 ...]；"
+            "kb.py redact <文件|-> [--json | --apply-aliases]。运行 --help 查看帮助。"
         )
 
 
 def build_parser():
-    parser = ChineseParser(prog="kb.py", description="kb 插件自检、知识库配置、初始化与契约检查")
+    parser = ChineseParser(prog="kb.py", description="kb 插件自检、知识库配置、初始化、契约检查与脱敏扫描")
     commands = parser.add_subparsers(dest="command", required=True, metavar="子命令")
     doctor = commands.add_parser("doctor", help="检查配置与知识库目录")
     doctor.add_argument("--json", action="store_true", help="输出 JSON 对象")
@@ -49,15 +53,55 @@ def build_parser():
     checker = commands.add_parser("check", help="只读检查知识库契约")
     checker.add_argument("--json", action="store_true", help="输出 JSON 对象")
     checker.add_argument("paths", nargs="*", metavar="路径", help="相对知识库根目录的页面或目录；默认全部")
+    redactor = commands.add_parser('redact', help='替换项目代号并扫描敏感内容，不写文件')
+    redactor.add_argument('path', metavar='文件|-', help='草稿文件路径，或 - 从标准输入读取')
+    output = redactor.add_mutually_exclusive_group()
+    output.add_argument('--json', action='store_true', help='输出 JSON 扫描结果')
+    output.add_argument('--apply-aliases', action='store_true', help='安全时输出替换后的文本，替换数写到标准错误')
     return parser
+
+
+def redact(args, blocklist):
+    aliases = load_aliases()
+    root = resolve_vault().resolve() if config_path().exists() else None
+    path = '<stdin>' if args.path == '-' else args.path
+    try:
+        text = sys.stdin.read() if args.path == '-' else Path(args.path).read_text(encoding='utf-8')
+        if root is not None and args.path != '-':
+            target = Path(args.path).resolve()
+            if target.is_relative_to(root):
+                path = target.relative_to(root).as_posix()
+    except (OSError, UnicodeError, ValueError, RuntimeError):
+        raise KbError('无法读取待扫描内容，需要普通文件或 UTF-8 标准输入') from None
+    text, count = apply_aliases(text, aliases)
+    allow_entries, errors = (parse_allowlist(read_optional_text(root / 'redaction-allow.txt'))
+                             if root is not None else (set(), []))
+    findings = errors + scan(text, path, blocklist, allow_entries)
+    result = {'ok': not findings, 'replaced': count,
+              'findings': [{**asdict(f), 'code': 'redaction', 'path': mask_text(f.path, blocklist)}
+                           for f in findings]}
+    return result, text
+
+
+def print_redaction(result, stream):
+    print(f"已替换 {result['replaced']} 处项目代号。", file=stream)
+    for finding in result['findings']:
+        print(f"{finding['path']}:{finding['line']} [redaction] {finding['category']}："
+              f"{finding['masked']}（第 {finding['column']} 列）", file=stream)
+    print('脱敏扫描通过，0 个问题。' if result['ok'] else
+          f"脱敏扫描发现 {len(result['findings'])} 个问题。", file=stream)
 
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     command = argv[0] if argv else None
     is_doctor = command == "doctor"
+    redacted_text = None
+    blocklist = []
     try:
         args = build_parser().parse_args(argv)
+        if args.command in ('check', 'redact'):
+            blocklist = load_blocklist()
         if args.command == "doctor":
             result = diagnose()
         elif args.command == "init":
@@ -65,17 +109,22 @@ def main(argv=None):
         elif args.command == "check":
             findings = check_vault(Vault.load(args.paths))
             result = {"ok": not findings, "findings": [asdict(finding) for finding in findings]}
+        elif args.command == 'redact':
+            result, redacted_text = redact(args, blocklist)
         else:
             result = set_vault(args.path, args.confirm)
         exit_code = 0 if result["ok"] else 1
     except KbError as error:
-        result = {"ok": False, "config": str(config_path()), "error": str(error)}
-        if command == "check":
+        message = mask_text(str(error), blocklist) if command in ('check', 'redact') else str(error)
+        result = {"ok": False, "config": str(config_path()), "error": message}
+        if command in ('check', 'redact'):
             result = {"ok": False, "findings": []}
+            if command == 'redact':
+                result['replaced'] = 0
             if "--json" in argv:
-                print(str(error), file=sys.stderr)
+                print(message, file=sys.stderr)
             else:
-                result["error"] = str(error)
+                result["error"] = message
         elif command == "init":
             result.update(vault=None, create=[], skip=[], git_init=False, written=False)
         elif is_doctor:
@@ -87,6 +136,13 @@ def main(argv=None):
         print(json.dumps(result, ensure_ascii=False))
     elif exit_code == 2:
         print(result["error"], file=sys.stderr)
+    elif command == 'redact':
+        if args.apply_aliases:
+            print_redaction(result, sys.stderr)
+            if result['ok']:
+                sys.stdout.write(redacted_text)
+        else:
+            print_redaction(result, sys.stdout)
     elif command == "init":
         print(f"{'已初始化' if result['written'] else '初始化预览'}：{result['vault']}")
         for path in result['create']:
