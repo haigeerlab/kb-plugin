@@ -15,3 +15,7 @@
 - [x] T4 真实环境验证 AC6、AC7（gate，用户 2026-11-19 批准执行）
   - AC6：在 tab-leader 运行 `claude -p "/kb:lint 只出报告…" --model haiku`，对真实知识库：check 级 0（退出 0），维护提示 1 条（`wiki/pitfalls/codex-plugin-cache-refresh.md` 孤儿页，事实和建议分开写），可安全修复 0 处，没有进入修复；规模指标：页数 1/300，index 344/40960 字节，ask 平均读文件数"暂无数据"、没有估算；知识库 HEAD 不变，工作区干净
   - AC7：delegate 只读派单（tab-leader，effort low），Codex 加载缓存里的 `skills/lint/SKILL.md`，执行 `kb.py lint` 退出 0；分组数量 0/0/0/1、规模指标、"暂无数据"都和 AC6 一致；知识库没有改动
+
+## 最终验收
+
+- [x] 用户 2026-11-19 批准最终验收（lint Spec 未修改；同时批准了 save Spec 在 lint T2 新增的那行变更记录）
