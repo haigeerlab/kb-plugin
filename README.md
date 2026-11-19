@@ -331,6 +331,34 @@ preview 复用 save 的共享写入流程，在保留完整 Git 历史的叠加�
 退出码：`lint` 为 `0` 无 check 级问题（可有提示）、`1` 有 check 级问题、`2` 用法或配置错误；`lint fix` 为 `0` 成功（含无需修复）、`1` 校验、写入或提交失败、`2` 用法或配置错误、`3` 指纹不匹配。
 `--json` 报告包含有序 `groups`、`hints`、`metrics`、`fixable` 数量与 `summary`；`metrics.ask_average_reads.value` 为 `null`，并带 `reason`。修复结果另含 `findings`、`created`、`modified`，preview 带 `diff` 和 `fingerprint`，apply 带 `commit`。
 
+### 语义体检（可选）
+
+需要深度体检时，可在确定性体检后提取候选包，由模型判断疑似矛盾、疑似过期、缺页概念和建议升级为规则四类问题，再核对报告的逐字引文：
+
+```bash
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py lint semantic-pack
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py lint semantic-verify /临时目录/findings.json --json
+```
+
+`semantic-pack` 默认输出 JSON，`--json` 可省略；测试可用 `--today YYYY-MM-DD` 固定今天，平时默认本地日期。包中包含各页元数据、距创建和更新日期的天数、相关和正文内的 wiki 页面链接、去掉全部标注块的现行正文及四类事实线索。正文每页最多 4000 字符，整个 UTF-8 JSON 包不超过 60000 字节，优先保留 `updated` 较旧的页；`truncated` 和 `truncated_pages` 标明截断，元数据与候选仍放不下时省略较新页面，并以 `omitted_page_count` 记录数量。被省略的页面也进入截断清单；清单自身最多占 15000 字节，`truncated_page_count` 始终记录截断总页数。矛盾候选最多 30 对，线索本身不代表问题成立。
+
+模型生成的 findings 格式如下，`category` 取 `contradiction`、`stale`、`missing-page` 或 `promote`，引文必须来自所列 wiki 页面的现行结论区：
+
+```json
+{"version": 1, "findings": [
+  {"category": "stale",
+   "pages": ["wiki/tech/example.md"],
+   "quotes": [{"page": "wiki/tech/example.md", "text": "这里填写页面中的逐字引文"}],
+   "reason": "说明为什么需要核实",
+   "action": "建议重新核实后更新日期",
+   "verified_by": "可选：本机只读核实命令与结果"}
+]}
+```
+
+`semantic-verify -` 从 stdin 读取同样的 JSON，适用于无法写临时文件的只读沙箱。验证会拒绝越界、非 wiki 或不存在的页面路径，标注块内的旧结论不能作证；引文复用 evidence 的空白规范化和逐字包含判断。JSON 结果分为 `accepted` 和带失败理由的 `rejected`，全部内容经过现有打码规则与本地黑名单处理；省略 `--json` 时，按四类输出通过的条目，最后单列“引文核对失败，已剔除”。退出码为 `0` 全部通过、`1` 有剔除项、`2` 输入格式、配置或用法错误。
+
+语义体检只出报告，不修改知识库、不写 log、不联网核实，也不执行升级规则；建议动作由用户决定是否另行执行。
+
 ## 卸载
 
 Claude Code：

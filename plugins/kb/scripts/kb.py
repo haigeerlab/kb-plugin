@@ -4,13 +4,14 @@
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import asdict
+from datetime import date
 import io
 import json
 import os
 from pathlib import Path
 import sys
 
-from kblib import KbError, candidates, capture, delegate_lessons
+from kblib import KbError, candidates, capture, delegate_lessons, semantic
 from kblib.ask import search
 from kblib.compile import compile as compile_draft
 from kblib.config import (config_path, load_aliases, load_blocklist, read_optional_text,
@@ -22,7 +23,7 @@ from kblib.lint import (fix as lint_fix, print_fix as print_lint_fix,
                         report as lint_report, print_report as print_lint_report)
 from kblib.redaction import apply_aliases, mask_text, parse_allowlist, scan
 from kblib.save import empty_result as empty_save_result, save
-from kblib.vault import Vault
+from kblib.vault import Vault, today
 from kblib.writer import commit_pending, empty_pending_result
 
 
@@ -109,6 +110,12 @@ def build_parser():
     linter.add_argument('--json', action='store_true', help='输出 JSON 对象')
     linter.add_argument('--stale-days', type=int, default=180, metavar='N', help='疑似过期阈值，必须为正整数，默认 180 天')
     actions = linter.add_subparsers(dest='action', metavar='体检命令')
+    packer = actions.add_parser('semantic-pack', help='只读提取语义体检候选，默认输出 JSON')
+    packer.add_argument('--json', action='store_true', help='输出 JSON 对象（默认）')
+    packer.add_argument('--today', metavar='YYYY-MM-DD', help='测试用的今天日期；默认本地日期')
+    verifier = actions.add_parser('semantic-verify', help='核对语义报告引文，只输出报告')
+    verifier.add_argument('path', metavar='文件|-', help='findings JSON 文件路径，或 - 从标准输入读取')
+    verifier.add_argument('--json', action='store_true', help='输出 accepted 与 rejected JSON 对象')
     fixer = actions.add_parser('fix', help='预览或确认执行三类安全修复')
     repairs = fixer.add_subparsers(dest='fix_action', required=True, metavar='修复命令')
     preview = repairs.add_parser('preview', help='生成安全修复预览与指纹')
@@ -166,6 +173,31 @@ def print_redaction(result, stream):
           f"脱敏扫描发现 {len(result['findings'])} 个问题。", file=stream)
 
 
+def semantic_report(args):
+    if args.action == 'semantic-pack':
+        day = today()
+        if args.today is not None:
+            try:
+                day = date.fromisoformat(args.today)
+                if day.isoformat() != args.today:
+                    raise ValueError
+            except ValueError:
+                raise KbError('语义体检用法错误：--today 必须是有效的 YYYY-MM-DD 日期') from None
+        return semantic.pack(Vault.load(), day)
+    try:
+        text = sys.stdin.read() if args.path == '-' else Path(args.path).read_text(encoding='utf-8')
+    except (OSError, UnicodeError, ValueError):
+        raise KbError('无法读取语义体检 findings，需要 UTF-8 JSON 文件或标准输入') from None
+    def invalid_constant(value):
+        raise ValueError('JSON 不支持非有限数值')
+
+    try:
+        findings = json.loads(text, parse_constant=invalid_constant)
+        return semantic.verify(Vault.load(), findings)
+    except (ValueError, RecursionError):
+        raise KbError('语义体检 findings JSON 格式错误') from None
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:2] == ['capture', 'hook']:
@@ -212,6 +244,8 @@ def main(argv=None):
         elif args.command == 'lint':
             if args.action == 'fix':
                 result, exit_code = lint_fix(args.confirm if args.fix_action == 'apply' else None)
+            elif args.action in ('semantic-pack', 'semantic-verify'):
+                result = semantic_report(args)
             else:
                 result = lint_report(Vault.load(), args.stale_days)
         elif args.command == 'ask':
@@ -229,7 +263,9 @@ def main(argv=None):
         if command == 'lint' and message.startswith('命令或参数无效。用法：'):
             message = ('体检用法错误。用法：kb.py lint [--json] [--stale-days N]；'
                        'kb.py lint fix preview [--json]；'
-                       'kb.py lint fix apply --confirm <指纹> [--json]。运行 --help 查看帮助。')
+                       'kb.py lint fix apply --confirm <指纹> [--json]；'
+                       'kb.py lint semantic-pack [--json] [--today YYYY-MM-DD]；'
+                       'kb.py lint semantic-verify <文件|-> [--json]。运行 --help 查看帮助。')
         result = {"ok": False, "config": str(config_path()), "error": message}
         if command == 'commit-pending':
             result = empty_pending_result()
@@ -255,7 +291,7 @@ def main(argv=None):
         else:
             result.update(content=None, written=False)
         exit_code = error.exit_code
-    if "--json" in argv:
+    if "--json" in argv or argv[:2] == ['lint', 'semantic-pack']:
         print(json.dumps(result, ensure_ascii=False))
     elif command == 'candidates':
         if result['ok']:
@@ -293,6 +329,8 @@ def main(argv=None):
     elif command == 'lint':
         if args.action == 'fix':
             print_lint_fix(result)
+        elif args.action == 'semantic-verify':
+            semantic.print_report(result)
         else:
             print_lint_report(result)
     elif command == 'capture':
