@@ -12,3 +12,6 @@
   - 抽查 7：draft 命令设置 `CLAUDE_PLUGIN_ROOT` 后原样执行，退出 0、无输出、入队；插件根不存在时静默退出 0
   - AC4、AC7：capture status、config set-capture、README 由测试和通读确认
 - [ ] T3 启用 hook 并在桌面 app 真实验证（gate，模块最终验收）
+  - 已启用：`b2bdf33`（22:46:22），hooks.json 校验通过；Claude Code 插件列表显示 kb 已启用、读源码目录
+  - 命令行验证（22:53）：`claude -p` 加临时 `KB_CONFIG`/`KB_STATE_DIR`（阈值 1，不碰真实配置和队列）→ 临时队列出现 1 条，reason=other，transcript_path 指向真实存在的会话文件 → **SessionEnd hook 在 Claude Code 里确实触发、入队流程正确**
+  - 待办：桌面 app 的 Code 标签页结束会话时是否触发（只能由用户操作，系统不允许 Claude 控制 Claude 桌面 app 本身）。第一次用户在 Chat 标签页测试，Chat 不是 Claude Code，不产生会话记录
