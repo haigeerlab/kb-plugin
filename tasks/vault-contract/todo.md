@@ -17,3 +17,7 @@
   - Claude Code：在 tab-leader 用 `claude -p` 新开进程跑 `/kb:init`（只预览），17 项都报"跳过"，git init 也跳过，退出 0，知识库没有改动；新 skill 不用重装就能用
   - Codex：缓存里原来只有 doctor。实测 `marketplace upgrade` 只刷新 Git 来源；**重新执行 `codex plugin add kb@kb-marketplace` 就能刷新缓存**，之后缓存和源码 diff 为空。已写进 README（补上 plugin-shell 遗留的那一项）
   - Codex 只读派单：加载了缓存里的 `skills/init/SKILL.md`，预览"将创建 0 项、跳过 17 项"，退出 0，知识库没有改动
+
+## 最终验收
+
+- [x] 用户 2026-11-19 批准最终验收（同时批准 Spec 假设 6 的修订）
