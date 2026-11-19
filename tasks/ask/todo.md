@@ -9,4 +9,7 @@
   - AC3：interface.json 契约 1.0、references/interface.md 已发布，check-manifests 校验 interface.json 并通过
   - AC4：SKILL.md 覆盖抽词、检索、读候选、按区域回答、出处、查不到明说、不写文件
   - 对抗抽查：1 只在 outdated 块命中的页面排在 current 页面之后 ✓；2 superseded 整页全部标 outdated 并带 superseded_by ✓；3 代码块命中按所在区域判为 current ✓；4 `a.b`、`(x)` 按字面量匹配 ✓；5 搜索前后 git 状态不变 ✓；6 没有命中时退出 1，pages 为空，ok=true ✓
-- [ ] T4 真实环境验证 AC5–AC7（gate，模块最终验收）
+- [x] T4 真实环境验证 AC5–AC7（gate，用户 2026-11-19 批准执行）
+  - AC5：在 tab-leader 运行 `claude -p "/kb:ask Codex 里改了插件的 skill 为什么不生效？" --model haiku`。回答命中 `wiki/pitfalls/codex-plugin-cache-refresh.md`，每条依据都附绝对路径链接；直接回答为"Codex 读的是缓存副本，改了源码不会自动更新，要重新安装"；检索了 10 个词，命中 1 页；"知识库之外：无"
+  - AC6：dispatch 样例复制到临时目录（git 提交信息用中文，否则会被用户的提交 hook 拦下），通过 `KB_CONFIG` 指向它，问"把机械活派给子代理省钱吗？"。直接回答是"不一定省钱。按现行判据……默认不派"；旧结论放在"历史与分歧"一节，写成"曾经认为……后被 2026-10-06 的整账实测推翻"；命中 2 页，临时知识库 git 状态不变。末尾的模块协调提醒来自 tab-leader 自己的规则，和 kb 无关
+  - AC7：delegate 只读派单（tab-leader，effort low）。Codex 加载了缓存里的 `skills/ask/SKILL.md`，执行 `ask search Codex 插件 plugin skill 缓存 cache 生效 --json`，退出 0；读完页面后作答，每条附出处；知识库没有改动
