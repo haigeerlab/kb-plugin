@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved f6d89132a55e -->
+<!-- spec-guard: review approved 0f1330ae92b4 -->
 
 # Spec: save
 
@@ -104,7 +104,33 @@ README.md                         # 修改：/kb:save 标为已实现
 
 无。
 
+## 修订：提交失败后的待提交状态（2026-11-19，MVP 验收 V4 发现）
+
+**背景**：MVP 验收 V4 中，通过 delegate 派出的 Codex 可写沙箱禁止写 `.git`。`save apply` 写入了文件，但 `git add` 失败。当时只能人工核对后手动提交。手动敲 `git add` 容易漏文件、多加文件，而且没有校验。
+
+**修订内容**（save 与 lint fix 共用，实现在 writer.py）：
+
+1. **写入成功、提交失败时，记录待提交状态**：writer 在知识库根目录写 `.kb-pending.json`，内容是 `{"schema": 1, "operation": "save"|"lint", "message": "<原定提交信息>", "files": {"<路径>": "<sha256>", …}, "fingerprint": "<预览指纹>", "created": "<本地时间>"}`。报错信息里给出下一步要跑的完整命令。如果连这个文件也写不进去，就照旧只报告原因。
+2. **新增 `kb.py commit-pending [--json]`**：
+   - 读取 `.kb-pending.json`；
+   - 核对每个文件当前内容的 sha256 和记录一致；
+   - 核对工作区里除这些文件和 `.kb-pending.json` 外没有别的改动；
+   - 运行全量 `kb check`，必须 0 问题；
+   - 只 `git add` 记录中的文件，按记录的提交信息提交，然后删除 `.kb-pending.json`。
+   
+   退出码：0 成功；1 核对或校验不通过（不提交，保留记录）；2 没有待提交记录或用法错误。
+3. **待提交期间挡住新写入**：`.kb-pending.json` 存在时，save 和 lint fix 的 preview、apply 都拒绝执行，并提示先运行 `commit-pending`。（工作区脏检查已经能挡住，这里额外给出明确的提示文字。）
+4. **SKILL.md（save、lint）**：apply 报"提交失败、已记录待提交"时，把报错里给出的 `commit-pending` 命令原样告诉用户。在 Claude Code 或终端里运行即可；在交互式 Codex 里可以申请提权后运行。**不要自己执行 `git add`、`git commit`，也不要去改 `.git`。**
+5. `kb check` 和 lint 忽略 `.kb-pending.json`，它不是知识库内容。
+
+**新增验收标准**：
+- **AC8** 模拟提交失败（测试里把 `.git` 设成只读，或替换掉 commit 函数）：文件已写入、`.kb-pending.json` 内容正确、退出码为 1，报错里含 `commit-pending` 命令。
+- **AC9** `commit-pending` 的成功路径，以及三种拒绝情况：文件内容和记录不一致、工作区有记录以外的改动、`kb check` 不通过。拒绝时不提交，记录保留。
+- **AC10** 有待提交记录时，save 和 lint fix 的 preview 被拒绝，提示 `commit-pending`。
+- **AC11（真实环境）** 重跑 V4：用 delegate 派 Codex 可写执行一次 save（素材是 V4 本身暴露的坑："Codex 沙箱禁止写 `.git`"），你确认后 apply；提交失败时生成待提交记录；然后在 Claude Code 里运行 `commit-pending` 完成提交，`kb check` 0 问题。
+
 ## 变更记录
 
 - 2026-11-19 初稿。
 - 2026-11-19（lint 模块 T2）：SKILL.md 第 6 步补充——处置为"没有新内容"时，log 条目正文必须写出本次 inbox 路径，供 lint 区分已处理的 inbox 和积压。只改 SKILL.md 文字，脚本行为不变。
+- 2026-11-19（MVP 验收 V4 修复）：新增「修订：提交失败后的待提交状态」一节，包括 `.kb-pending.json`、`kb.py commit-pending`、待提交期间挡住新写入、SKILL 的提示规则，以及 AC8–AC11。
