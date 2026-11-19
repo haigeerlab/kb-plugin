@@ -15,5 +15,9 @@
   - AC4：SKILL.md 覆盖范围确认、inbox 提炼规则、检索两步、四种处置、模板、index 和 log 格式、preview → 原样展示 → 明确确认 → apply → 报告；敏感内容引用 SCHEMA
   - AC7：README 把 `/kb:save` 标为已实现，写了流程和退出码
   - 通读 save.py：叠加校验用 `git clone --no-hardlinks` 保留历史，再同步工作区；原子写入用临时文件加 os.replace，失败时逆序恢复备份、删除新建文件和目录
-- [ ] T4 真实沉淀第一条知识，AC5（gate）
+- [x] T4 真实沉淀第一条知识，AC5（gate，用户 2026-11-19 批准执行；写入前用户确认了预览）
+  - 通过已安装的 `kb:save` skill 执行（Claude Code 把 `${CLAUDE_PLUGIN_ROOT}` 代入成了实际路径）
+  - 检索：index 为空；`rg` 搜 缓存、cache、插件、plugin、codex、marketplace、市场，wiki 没有命中 → 新建 pitfall
+  - preview 一次通过，指纹 `4a38d5ed9fb66cdd`；用户确认后 apply，知识库提交 `d591ba1`（save: Codex 插件改了 skill 不生效：读的是缓存副本），`kb check` 0 问题，工作区干净；草稿目录已删除
+  - 发现待修项：知识库 `templates/*.md` 的日期在 init 时被替换成了 2026-11-19，没有保留占位符；以后照抄会写错日期
 - [ ] T5 Codex 跨宿主验证，AC6（gate，模块最终验收）
