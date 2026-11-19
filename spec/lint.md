@@ -99,3 +99,4 @@ README.md
 ## 变更记录
 
 - 2026-11-19 初稿。
+- 2026-11-20（lint-semantic 引入）：`/kb:lint` 增加可选的语义段（用户明确要求时才跑，只出报告），新增 `lint semantic-pack`、`lint semantic-verify` 两个子命令；确定性部分和安全修复的行为不变。详见 [lint-semantic](lint-semantic.md)。
