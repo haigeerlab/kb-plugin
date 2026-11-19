@@ -10,5 +10,8 @@
   - AC7：在临时副本里把 Codex 清单的版本改成 0.1.1，`check-manifests.py` 报错并退出 1
   - AC8：README 写有两个宿主的安装方法、命令清单（未实现的已标注）、配置、卸载、开发验证
   - 复核：通读 config.py、kb.py、doctor.py、根目录解析片段、doctor SKILL.md，没有越界写入；`set-vault` 只写配置文件
-- [ ] T4 Claude Code 真实安装，验收 AC2（gate）
+- [x] T4 Claude Code 真实安装，验收 AC2（gate，用户 2026-11-19 批准执行）
+  - 写入 `~/.config/kb/config.json`（vault=~/Documents/haigeerlab/kb），`kb.py doctor` 退出 0
+  - `claude plugin marketplace add` 加 `install kb@kb-marketplace`：scope user，状态 enabled，Read from 指向仓库内的 `plugins/kb`（本地目录市场，改代码不用重装）
+  - AC2：在 tab-leader 目录运行 `claude -p "/kb:doctor" --model haiku --allowedTools Bash`，新进程解析到正确的知识库，自检通过，退出 0
 - [ ] T5 Codex 真实安装，验收 AC3（gate，模块最终验收）
