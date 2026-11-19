@@ -14,6 +14,7 @@ from kblib.doctor import diagnose
 from kblib.checks import check as check_vault
 from kblib.init import initialize
 from kblib.redaction import apply_aliases, mask_text, parse_allowlist, scan
+from kblib.save import empty_result as empty_save_result, save
 from kblib.vault import Vault
 
 
@@ -32,12 +33,14 @@ class ChineseParser(argparse.ArgumentParser):
             "命令或参数无效。用法：kb.py doctor [--json]；"
             "kb.py config set-vault <路径> [--confirm] [--json]；"
             "kb.py init [--confirm] [--json]；kb.py check [--json] [路径 ...]；"
-            "kb.py redact <文件|-> [--json | --apply-aliases]。运行 --help 查看帮助。"
+            "kb.py redact <文件|-> [--json | --apply-aliases]；"
+            "kb.py save preview <草稿目录> [--json]；"
+            "kb.py save apply <草稿目录> --confirm <指纹> [--json]。运行 --help 查看帮助。"
         )
 
 
 def build_parser():
-    parser = ChineseParser(prog="kb.py", description="kb 插件自检、知识库配置、初始化、契约检查与脱敏扫描")
+    parser = ChineseParser(prog="kb.py", description="kb 插件自检、知识库配置、初始化、契约检查、脱敏扫描与知识保存")
     commands = parser.add_subparsers(dest="command", required=True, metavar="子命令")
     doctor = commands.add_parser("doctor", help="检查配置与知识库目录")
     doctor.add_argument("--json", action="store_true", help="输出 JSON 对象")
@@ -58,6 +61,15 @@ def build_parser():
     output = redactor.add_mutually_exclusive_group()
     output.add_argument('--json', action='store_true', help='输出 JSON 扫描结果')
     output.add_argument('--apply-aliases', action='store_true', help='安全时输出替换后的文本，替换数写到标准错误')
+    saver = commands.add_parser('save', help='校验草稿、预览并确认后保存知识')
+    actions = saver.add_subparsers(dest='action', required=True, metavar='保存命令')
+    preview = actions.add_parser('preview', help='校验草稿并生成预览指纹')
+    preview.add_argument('draft', metavar='草稿目录', help='镜像知识库相对路径的草稿目录')
+    preview.add_argument('--json', action='store_true', help='输出 JSON 对象')
+    apply = actions.add_parser('apply', help='重新校验指纹后写入并本地提交')
+    apply.add_argument('draft', metavar='草稿目录', help='已经预览并确认的草稿目录')
+    apply.add_argument('--confirm', required=True, metavar='指纹', help='用户确认的预览指纹')
+    apply.add_argument('--json', action='store_true', help='输出 JSON 对象')
     return parser
 
 
@@ -100,7 +112,7 @@ def main(argv=None):
     blocklist = []
     try:
         args = build_parser().parse_args(argv)
-        if args.command in ('check', 'redact'):
+        if args.command in ('check', 'redact', 'save'):
             blocklist = load_blocklist()
         if args.command == "doctor":
             result = diagnose()
@@ -111,13 +123,20 @@ def main(argv=None):
             result = {"ok": not findings, "findings": [asdict(finding) for finding in findings]}
         elif args.command == 'redact':
             result, redacted_text = redact(args, blocklist)
+        elif args.command == 'save':
+            result, exit_code = save(args.draft, args.confirm if args.action == 'apply' else None)
         else:
             result = set_vault(args.path, args.confirm)
-        exit_code = 0 if result["ok"] else 1
+        if args.command != 'save':
+            exit_code = 0 if result["ok"] else 1
     except KbError as error:
-        message = mask_text(str(error), blocklist) if command in ('check', 'redact') else str(error)
+        message = mask_text(str(error), blocklist) if command in ('check', 'redact', 'save') else str(error)
         result = {"ok": False, "config": str(config_path()), "error": message}
-        if command in ('check', 'redact'):
+        if command == 'save':
+            result = empty_save_result(len(argv) > 1 and argv[1] == 'apply')
+            result['findings'] = [{'code': 'config' if '用法' not in message else 'usage',
+                                   'path': '.', 'line': 1, 'message': message}]
+        elif command in ('check', 'redact'):
             result = {"ok": False, "findings": []}
             if command == 'redact':
                 result['replaced'] = 0
@@ -134,6 +153,21 @@ def main(argv=None):
         exit_code = error.exit_code
     if "--json" in argv:
         print(json.dumps(result, ensure_ascii=False))
+    elif command == 'save':
+        for finding in result['findings']:
+            print(f"{finding['path']}:{finding['line']} [{finding['code']}] {finding['message']}")
+        if result['ok']:
+            for key, label in (('created', '新建'), ('modified', '修改')):
+                for path in result[key]:
+                    print(f'{label}：{path}')
+            if 'commit' in result:
+                print(f"保存成功，已本地提交：{result['commit']}")
+            else:
+                print(f"已替换 {result['replaced_aliases']} 处项目代号。")
+                print(result['diff'], end='')
+                print(f"预览指纹：{result['fingerprint']}\n校验通过；确认后运行 save apply <草稿目录> --confirm {result['fingerprint']}。")
+        else:
+            print('保存失败，未完成保存。')
     elif exit_code == 2:
         print(result["error"], file=sys.stderr)
     elif command == 'redact':

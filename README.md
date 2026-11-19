@@ -1,6 +1,6 @@
 # kb
 
-在 Claude Code 与 Codex 中使用同一个本地知识库。当前版本 `0.1.0` 已实现插件外壳、位置配置、自检、知识库初始化、契约校验与脱敏扫描，要求 Python 3.9 或更高版本，无第三方依赖。
+在 Claude Code 与 Codex 中使用同一个本地知识库。当前版本 `0.1.0` 已实现插件外壳、位置配置、自检、知识库初始化、契约校验、脱敏扫描与知识保存，要求 Python 3.9 或更高版本，无第三方依赖。
 
 ## 安装
 
@@ -40,7 +40,7 @@ codex plugin add kb@kb-marketplace
 | --- | --- | --- |
 | `/kb:doctor` | 已实现 | 检查配置、显示知识库位置并自检 |
 | `/kb:init` | 已实现 | 预览并确认后补齐知识库骨架，已有文件不覆盖 |
-| `/kb:save` | 未实现 | 后续实现知识保存 |
+| `/kb:save` | 已实现 | 草稿校验、预览，确认后保存一条经验并本地提交 |
 | `/kb:ask` | 未实现 | 后续实现知识查询 |
 | `/kb:lint` | 未实现 | 后续实现知识库检查 |
 
@@ -143,6 +143,31 @@ blocklist.txt 与 aliases.json 始终跟随配置文件所在目录；设置 `KB
 
 `kb check` 已注册 redaction，检查 inbox/、raw/、wiki/、index.md、log.md；它读取黑名单与放行清单，扫描原文，不进行别名替换。指定路径时扫描对应内容，index、log 与放行清单格式仍作全局检查。模板与 SCHEMA.md 不属于脱敏扫描范围。
 
+## 保存一条经验
+
+一次 save 的流程是：草稿目录 → preview → 用户明确确认 → apply --confirm <指纹>。
+模型负责提炼和选择新建、并入、冲突或没有新内容；脚本负责脱敏、全量契约检查、写入与本地提交。
+先确保知识库已由 init 初始化并提交骨架，且工作区没有未提交改动。
+
+草稿目录放在知识库之外，结构镜像知识库相对路径：必须恰好包含一个 `inbox/` 下的新文件，另可包含 `wiki/` 下的新建或修改文件、`index.md`、`log.md`。
+禁止修改已有 inbox、写入 raw、符号链接、越界或 `..` 路径，不支持删除；未放入草稿的已有文件保持原样。
+
+```bash
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py save preview /临时目录/kb-save-草稿
+# After explicit user confirmation, use the preview fingerprint:
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py save apply /临时目录/kb-save-草稿 --confirm <指纹>
+```
+
+preview 先使用真实配置目录的 `aliases.json` 替换代号，再扫描敏感内容，在保留 git 历史的临时副本上执行全部检查；输出新建、修改文件、unified diff、替换数和 16 位预览指纹，不修改知识库或草稿。
+apply 重跑同样的校验并比较指纹；知识库 HEAD、工作区状态、草稿原文或替换后的内容变化都会使确认失效，需要重新 preview。
+普通脏工作区拒绝为 `1`；拿先前预览指纹对变化后的工作区执行 apply 返回 `3`。
+校验和指纹通过后，用同目录临时文件逐个原子替换；写入失败回滚本次文件改动。随后只暂存本次文件并执行本地 `save: <标题>` 提交，不 push。
+标题优先取 inbox 对应 wiki 主页面的 frontmatter title；没有新内容时取 inbox 的 title，缺省使用 inbox 文件名。
+提交失败时保留已写入文件与暂存状态，报告打码后的原因，不自动 reset。
+
+两条命令都支持 `--json`：preview 固定字段为 `{ok, fingerprint, created, modified, diff, replaced_aliases, findings}`；apply 为 `{ok, commit, created, modified, findings}`。
+findings 使用中文原因和打码后的敏感值。退出码：`0` 成功，`1` 校验或脱敏失败、写入或提交失败，`2` 用法或配置错误，`3` 指纹不匹配。
+
 ## 卸载
 
 Claude Code：
@@ -173,3 +198,4 @@ python3 -B scripts/check-manifests.py
 所有测试都将 `KB_CONFIG` 指向临时目录，不读写真实配置，不安装插件。
 根目录解析测试使用假的 `codex`，清单失败测试只修改临时副本。
 知识库测试把合法样例和 AC6 三段素材样例复制到临时目录，用临时 git 仓库提交基线；覆盖全部 13 个检查码、证据回归、只读检查和初始化不覆盖行为。脱敏测试在运行时拼接假密钥，覆盖规则反例、别名、哈希放行、输出打码，以及会话摘录的 3 处命中与 1 处替换。vendor 原文件及许可证的 SHA-256 也在测试中核验。
+save 测试覆盖路径白名单、脱敏与代号替换、完整历史校验、指纹失效、写入回滚和提交失败；另在 init 创建的临时知识库中，用三段素材连续保存新坑页、新决策页和推翻旧结论的 outdated 块，每次检查为零问题，并核验三个 save 提交与 inbox 原文不可改性。
