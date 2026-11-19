@@ -16,3 +16,7 @@
 - [x] T3 更新真实知识库 SCHEMA.md，刷新 Codex 缓存（gate，用户 2026-11-19 批准执行）
   - 知识库 SCHEMA.md 前 100 行与模板逐字节一致，只追加模板第 101–112 行；之后和模板完全一致；`kb check` 0 问题；知识库本地提交 `2cf935c`
   - `codex plugin add kb@kb-marketplace` 刷新缓存，`diff -rq` 显示缓存和源码一致
+
+## 最终验收
+
+- [x] 用户 2026-11-19 批准最终验收（Spec 未修改）
