@@ -1,0 +1,44 @@
+{
+ "schema": 1,
+ "runId": "20261118080000.1005",
+ "kind": "run",
+ "parent": null,
+ "chainRoot": "20261118080000.1005",
+ "backend": "codex",
+ "repository": "/example/repo-a",
+ "write": true,
+ "strict": false,
+ "model": null,
+ "effort": null,
+ "status": "needs-input",
+ "exitCode": 0,
+ "resumable": true,
+ "startedAt": "2026-11-18T08:00:00Z",
+ "endedAt": "2026-11-18T08:05:00Z",
+ "durationSeconds": 300.0,
+ "sessionId": "00000000-0000-4000-8000-0000000000aa",
+ "answer": {
+  "path": "tests/fixtures/delegate/20261118080000.1005.answer",
+  "bytes": 35
+ },
+ "markers": {
+  "needUser": "NEED_USER:",
+  "timeUp": null,
+  "done": null
+ },
+ "wrapUp": null,
+ "commands": [],
+ "commandsTruncated": false,
+ "changedFiles": [],
+ "usage": {},
+ "cleanup": null,
+ "logs": {
+  "events": "tests/fixtures/delegate/20261118080000.1005.events.jsonl",
+  "stderr": "tests/fixtures/delegate/20261118080000.1005.log"
+ },
+ "timeoutSeconds": 540,
+ "authorization": {
+  "source": "in-turn"
+ },
+ "check": null
+}

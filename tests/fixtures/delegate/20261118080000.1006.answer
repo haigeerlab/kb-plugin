@@ -1,0 +1,6 @@
+已完成修复。
+
+发现：构建失败的原因是 vite 5.2.0 的 define 没有声明 __APP_VERSION__，在生产构建里被当成未定义变量。解法：在 vite.config.ts 的 define 里补上该常量，并在 env.d.ts 声明类型。验证：pnpm build 通过，单测 42 项全部通过。注意：只在 production 模式出现，dev 模式不会报错。
+已完成修复。
+
+发现：构建失败的原因是 vite 5.2.0 的 define 没有声明 __APP_VERSION__，在生产构建里被当成未定义变量。解法：在 vite.config.ts 的 define 里补上该常量，并在 env.d.ts 声明类型。验证：pnpm build 通过，单测 42 项全部通过。注意：只在 production 模式出现，dev 模式不会报错。
