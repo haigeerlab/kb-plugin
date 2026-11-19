@@ -84,6 +84,10 @@ export KB_CONFIG="/临时目录/kb-config.json"
 `config set-vault` 也支持 `--json`。JSON 模式均只输出一个对象：doctor 固定字段为 `ok`、`config`、`vault`、`checks`、`error`；set-vault 固定字段为 `ok`、`config`、`content`、`written`、`error`。
 `content` 是将写入的配置对象；`written` 表示是否已写入。失败时 `error` 给出中文原因。
 
+### git 身份
+
+`save` 和 `lint fix` 会在知识库里做本地提交，所以知识库所在目录必须能拿到 git 身份。全局设置了 `user.useConfigOnly = true`、身份只通过 `includeIf "gitdir:…"` 按目录引入时，知识库要放在被引入的目录下面（本机是 `~/Documents/haigeerlab/`）。放到其他目录时，写入会成功但提交会失败，报错为 `Author identity unknown`；文件会保留，不会回滚。
+
 ## 初始化与契约检查
 
 配置指向已存在的知识库目录后，先预览创建清单、跳过清单和是否执行 `git init`；确认后才写入：
