@@ -111,3 +111,4 @@ README.md
 
 - 2026-11-19 初稿。
 - 2026-11-19（T4 后修正）：`candidates show` 的提取规则补三处——去掉宿主注入的 `<task-notification>`、`<side-sessions-event>` 整块（与 `<system-reminder>` 同等处理），用户文本做 HTML 实体还原，非 user/assistant 的记录类型一律当元数据静默跳过、不计入"无法识别"；用户的非注入 `text` 块保留。范围内修正，改 1 条测试、补 1 条测试。
+- 2026-11-19（delegate-lessons 引入）：候选队列新增第三类来源 Codex 执行结果（`source: delegate`，旧记录无该字段时视为 `session`）；`candidates list`/`show` 支持该类候选；compile SKILL 第 2 步先兜底跑一次 `candidates scan-delegate`，并写明 delegate 候选的读法和"只有交付说明、没有可复用经验就建议丢弃"；编译时新建的 inbox 写 `source: delegate`、`host: codex`。详见 [delegate-lessons](delegate-lessons.md)。

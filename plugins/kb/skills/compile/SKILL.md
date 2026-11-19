@@ -1,6 +1,6 @@
 ---
 name: compile
-description: 用户要批量整理 kb 知识库的积压时使用，例如“/kb:compile”“整理一下 kb 的 inbox”“把最近的会话里值得记的东西编译进 kb”，或者每周整理。处理两类来源：inbox 里还没进 wiki 的条目，以及候选会话队列里的历史会话。先给清单让用户挑，再一次给出全部预览让用户确认，最后逐条写入。
+description: 用户要批量整理 kb 知识库的积压时使用，例如“/kb:compile”“整理一下 kb 的 inbox”“把最近的会话里值得记的东西编译进 kb”，或者每周整理。处理三类来源：inbox 里还没进 wiki 的条目、候选队列里的历史会话，以及 Codex 通过 delegate 执行任务的结果。先给清单让用户挑，再一次给出全部预览让用户确认，最后逐条写入。
 ---
 
 # 批量整理 kb 积压
@@ -61,18 +61,22 @@ python3 -B "$ROOT/scripts/kb.py" doctor --json
 
 ## 2. 列清单（第一次决定）
 
+先补扫一次 Codex 执行结果（兜底，防止会话结束时漏扫；失败不影响后续），再列清单：
+
 ```bash
+python3 -B "$ROOT/scripts/kb.py" candidates scan-delegate >/dev/null 2>&1 || true
 python3 -B "$ROOT/scripts/kb.py" candidates list --json
 ```
 
 对每一项先了解内容：
 
 - **inbox 积压**：完整读该 inbox 文件。
-- **候选会话**：`python3 -B "$ROOT/scripts/kb.py" candidates show <id>`。一个会话里可能有多条经验，也可能一条都没有。
+- **候选会话**（`source: session`）：`python3 -B "$ROOT/scripts/kb.py" candidates show <id>`。一个会话里可能有多条经验，也可能一条都没有。
+- **Codex 执行结果**（`source: delegate`）：同样用 `candidates show <id>`，输出是快照：状态、仓库、改动文件、**失败的命令**和 Codex 的**答复正文**。重点找三样东西：答复里写到的"发现 / 原因 / 解法"，失败命令的报错与后来怎么绕过，以及和预期不符的工具行为。不要把派单任务本身的需求描述当成经验。
 
-然后给用户一张清单，每一行包括：编号、来源（积压 / 候选，候选附上项目目录和结束时间）、一句话内容、你的建议（**编译** / **丢弃** / **先留着**）及理由。即将过期的候选标出"即将过期"；已过期的只列出来说明一下，不再处理。一个会话里有多条经验时拆成多行，例如 3a、3b。
+然后给用户一张清单，每一行包括：编号、来源（积压 / 候选会话 / Codex 执行，候选附上项目目录或仓库名和结束时间）、一句话内容、你的建议（**编译** / **丢弃** / **先留着**）及理由。即将过期的候选标出"即将过期"；已过期的只列出来说明一下，不再处理。一个会话里有多条经验时拆成多行，例如 3a、3b。
 
-建议"丢弃"的标准：没有解决的问题、没有被验证的猜测、只是闲聊或纯操作记录、知识库里已经完整覆盖的内容。
+建议"丢弃"的标准：没有解决的问题、没有被验证的猜测、只是闲聊或纯操作记录、知识库里已经完整覆盖的内容。Codex 执行结果另加一条：**答复只是"已完成 / 改了哪些文件 / 测试通过"之类的交付说明、没有可复用的原因或解法时，建议丢弃**——多数 delegate 候选会落在这一类，这是正常的。
 
 问用户：要编译哪几项、丢弃哪几项。没提到的项保持原样。
 
@@ -90,6 +94,7 @@ DRAFT="$(mktemp -d "${TMPDIR:-/tmp}/kb-compile-XXXXXX")"
 |---|---|---|
 | inbox 积压 | **不新建** inbox 文件，页面 `raw` 引用已有的那条 | `compile` |
 | 候选会话 | 新建**一条** inbox 摘录（`source: session`），承重事实从 `candidates show` 的输出里逐字摘出 | `compile` |
+| Codex 执行结果 | 新建**一条** inbox 摘录（`source: delegate`、`host: codex`），承重事实从 `candidates show` 的输出里逐字摘出 | `compile` |
 
 log 条目格式：`## [YYYY-MM-DD] compile | 标题`。处置为"没有新内容"时，正文写出 inbox 路径。
 
