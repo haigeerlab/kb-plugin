@@ -19,6 +19,7 @@ TIME_RE = re.compile(
     r'(?<![\w.])(?:v\d+(?:\.(?:\d+|x))*|\d+\.(?:\d+|x)(?:\.(?:\d+|x))*)(?!\w|\.\w)'
     r'|\b\d{4}[-/]\d{1,2}(?:[-/]\d{1,2})?\b|\d{4}年\d{1,2}月(?:\d{1,2}日)?'
     r'|目前|最新|现在|\b(?:currently|latest|now)\b', re.IGNORECASE)
+LINK_RE = re.compile(r'\[([^\]]*)\]\([^)]*\)')
 IMPERATIVE_RE = re.compile(r'总是|必须|永远不要|不要|\b(?:never|always)\b', re.IGNORECASE)
 
 
@@ -72,7 +73,8 @@ def _clues(pages, bodies, annotated, known, log_counts, backlinks):
     stale, missing, promote = [], {}, []
     for page in pages:
         path = page['path']
-        sentences = _sentences(bodies[path])
+        # Link destinations (e.g. never-force-push.md) are not prose; match on link text only.
+        sentences = _sentences(LINK_RE.sub(r'\1', bodies[path]))
         stale.extend({'page': path, 'sentence': sentence, 'updated_days': page['updated_days']}
                      for sentence in sentences if TIME_RE.search(sentence))
         for term in tags[path] | terms[path]:

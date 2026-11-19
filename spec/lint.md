@@ -1,4 +1,4 @@
-<!-- spec-guard: review approved b1e7792d5efb -->
+<!-- spec-guard: review approved 6ae55297000e -->
 
 # Spec: lint
 

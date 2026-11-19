@@ -401,5 +401,16 @@ class SemanticTests(unittest.TestCase):
             self.assertIn('****', output.stdout)
 
 
+
+    def test_link_destinations_do_not_create_clues(self):
+        # 2026-11-20 T4：链接地址 never-force-push-shared.md 里的 never 曾被当成祈使句
+        clues = self.pack()['candidates']
+        promoted = {item['page'] for item in clues['promote']}
+        self.assertNotIn('wiki/pitfalls/fluxctl-cache-ttl.md', promoted)
+        for item in clues['promote']:
+            for signal in item['signals']:
+                for sentence in signal.get('sentences', []):
+                    self.assertNotIn('never-force-push-shared.md', sentence)
+
 if __name__ == '__main__':
     unittest.main()
