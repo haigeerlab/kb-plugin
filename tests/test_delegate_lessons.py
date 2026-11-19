@@ -179,7 +179,7 @@ class DelegateLessonsTests(unittest.TestCase):
         self.clear_results()
         changes = ({'schema': True}, {'schema': 2}, {'runId': '../escape'}, {'commands': [None]},
                    {'commands': [{}]}, {'answer': None}, {'write': 1}, {'endedAt': 'bad'},
-                   {'changedFiles': None}, {'repository': None}, {'chainRoot': None})
+                   {'changedFiles': 'x'}, {'repository': None}, {'chainRoot': None})
         for n, change in enumerate(changes):
             run_id = f'bad-{n:03}'
             data = self.result(run_id)
@@ -369,6 +369,40 @@ class DelegateLessonsTests(unittest.TestCase):
         self.assertFalse((self.delegate / 'state').exists())
         self.assertEqual({p: p.read_bytes() for p in before}, before)
 
+
+
+    def test_read_only_run_with_null_changed_files_is_collected(self):
+        # 真实 delegate 0.8.6：write=false 的 run，changedFiles 为 null（2026-11-20 T4 实测 8 个）
+        source = json.loads((self.delegate / '20261118080000.1001.result.json').read_text(encoding='utf-8'))
+        for path in self.delegate.iterdir():
+            path.unlink()
+        run_id = '20261118080000.4001'
+        answer = self.delegate / (run_id + '.answer')
+        shutil.copyfile(Path(source['answer']['path']) if Path(source['answer']['path']).exists()
+                        else ROOT / 'tests/fixtures/delegate/20261118080000.1001.answer', answer)
+        source.update(runId=run_id, chainRoot=run_id, write=False, changedFiles=None)
+        source['answer']['path'] = str(answer)
+        (self.delegate / (run_id + '.result.json')).write_text(json.dumps(source), encoding='utf-8')
+        data = self.scan()
+        self.assertEqual((data['collected'], data['skipped']), (1, 0), data)
+        snapshot = self.snapshots()[run_id]
+        self.assertEqual((snapshot['write'], snapshot['changedFiles']), (False, []))
+
+
+    def test_resume_kind_is_collected_and_deduplicated_with_its_chain(self):
+        # 真实 delegate 0.8.6：续跑的 run 为 kind=resume（2026-11-20 T4 实测）
+        source = json.loads((self.delegate / '20261118080000.1001.result.json').read_text(encoding='utf-8'))
+        answer = Path(source['answer']['path']).read_text(encoding='utf-8')
+        for path in self.delegate.iterdir():
+            path.unlink()
+        for run_id, kind, status, ended in (('20261118080000.5001', 'run', 'needs-input', '2026-11-18T08:05:00Z'),
+                                            ('20261118080000.5002', 'resume', 'done', '2026-11-18T08:09:00Z')):
+            (self.delegate / (run_id + '.answer')).write_text(answer, encoding='utf-8')
+            data = dict(source, runId=run_id, kind=kind, status=status, endedAt=ended,
+                        chainRoot='20261118080000.5001', answer={'path': str(self.delegate / (run_id + '.answer'))})
+            (self.delegate / (run_id + '.result.json')).write_text(json.dumps(data), encoding='utf-8')
+        data = self.scan()
+        self.assertEqual([i['runId'] for i in data['items'] if i['action'] == 'collected'], ['20261118080000.5002'], data)
 
 if __name__ == '__main__':
     unittest.main()

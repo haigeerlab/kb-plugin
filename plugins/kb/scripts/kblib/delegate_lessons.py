@@ -85,8 +85,9 @@ def _result(path, run_id):
         return None, 'runId 缺失、无效或与文件名不一致'
     if data.get('kind') == 'review':
         return None, 'review 不收集'
-    if data.get('kind') != 'run':
-        return None, 'kind 缺失或不是 run'
+    # delegate 0.8.6 records continued runs as kind=resume.
+    if data.get('kind') not in ('run', 'resume'):
+        return None, 'kind 缺失或不是 run／resume'
     if data.get('status') not in ENDED:
         return None, '状态未结束或不在收集范围'
     try:
@@ -95,6 +96,9 @@ def _result(path, run_id):
                 raise ValueError
         _timestamp(data['startedAt'])
         _timestamp(data['endedAt'])
+        # Read-only runs report changedFiles as null in delegate 0.8.6.
+        if data.get('changedFiles', ()) is None:
+            data['changedFiles'] = []
         if (type(data['write']) is not bool or not isinstance(data['changedFiles'], list)
                 or any(not isinstance(value, str) for value in data['changedFiles'])
                 or not isinstance(data['commands'], list)
