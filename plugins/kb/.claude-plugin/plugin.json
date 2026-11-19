@@ -1,0 +1,8 @@
+{
+  "name": "kb",
+  "version": "0.1.0",
+  "description": "在 Claude Code 与 Codex 中使用同一个本地知识库。",
+  "author": {
+    "name": "haigeerlab"
+  }
+}
