@@ -53,6 +53,13 @@ MVP 验收通过后，进入 Phase 5（集成）：能力图里的 inbox-compile
 - 处理：主会话核对 4 个文件与预览草稿逐字节一致、`kb check` 0 问题后，补做提交 `1b0fb52`（`save: 临时 Git 仓库提交失败：条件身份配置未命中`），并删除草稿目录。
 - 结论：**通过 delegate 派出的 Codex 能完成 save 的全部判断和写入，但不能完成提交。** 交互式 Codex（审批策略为按需申请）理论上会弹出提权申请，但未实测。需要一个后续修复，见下方"待办"。
 
+### V4 复测（2026-11-19，修复后）— 通过
+
+- 修复：save Spec 修订「提交失败后的待提交状态」（`a9b7333`）：`.kb-pending.json` + `kb.py commit-pending`，SKILL 禁止模型自己执行 git。
+- 复测：Codex 可写执行 save → 预览转给用户 → 用户确认 → apply 写入后提交失败、生成待提交记录 → Codex 只转告命令、不自行补提交 → Claude Code 运行 `commit-pending` → 知识库提交 `68f59b4`，`kb check` 0 问题。
+- 结论：**PRD 第 9 节第 4 条（Claude Code 和 Codex 都能用）成立。** Codex 侧 save 需要多一步 `commit-pending`，原因是 delegate 沙箱不能写 `.git`；交互式 Codex 能否通过提权一步完成，还没有实测。
+
 ### 待办
 
-- **Codex 下 save / lint fix 提交受沙箱限制**：候选做法：① SKILL.md 在提交失败且原因是 `.git` 无写权限时，明确告诉用户要执行的提交命令（或在交互式 Codex 里申请提权），不让模型自己想办法绕过；② writer 增加"已写入、待提交"的显式状态和一条 `kb.py commit-pending` 命令，按写入记录的文件清单和内容哈希核对后再提交，避免手敲 `git add` 漏文件或多加文件。推荐 ② 加 ①。
+- ~~Codex 下 save / lint fix 提交受沙箱限制~~：已修复（`a9b7333`），见上方 V4 复测。
+- 小改进：Codex 两次 save 都在 index 条目之间多插了空行，save SKILL 里 index 的示例写法可以更明确。

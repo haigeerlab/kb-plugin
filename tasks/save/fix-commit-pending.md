@@ -37,7 +37,11 @@
 - [x] F1 — run `20261119170832.47932`，status=done，`--check` 通过；Git 验收块：基线 `80b0ef9`，修改 writer.py（+123 行）、kb.py、vault.py、save.py、lint.py、README，新增 test_commit_pending.py（12 项）；test_save.py、test_lint.py 没有改动
 - [x] F2 — save 和 lint 的 SKILL.md 各加 2 条：遇到"已记录待提交"时，把命令原样转告用户；遇到"有待提交记录"时，先请用户提交。禁止自己执行 git add/commit，禁止改 `.git` 或 `.kb-pending.json`
 - [x] F3 — unittest 共 203 项全部通过。用把临时知识库 `.git` 设成只读的方式真实触发提交失败：AC8 apply 退出 1，提示含 commit-pending，记录 4 个文件，HEAD 不变；AC10 有记录时 preview 被拒绝；抽查 1 改一个字节 → 拒绝，记录保留；抽查 2 多出记录外的文件 → 拒绝；抽查 3 JSON 损坏 / 记录缺失 → 退出 2，没有崩溃；抽查 4 成功 → `save: 沙箱禁止写 git` 只包含 4 个记录文件，记录已删除，check 0，工作区干净
-- [ ] F4 重跑 V4（gate，AC11）
+- [x] F4 重跑 V4（gate，AC11，用户 2026-11-19 批准执行）
+  - run `20261119172739.29491`：Codex 可写可续跑执行 kb:save，检索 22 个词，读了 2 篇候选，判为新建；preview 通过（指纹 `73353ac89d2bf4ce`），停在第 8 步以 NEED_USER 交回完整预览
+  - 用户回复"确认写入"，用原话续跑 run `20261119173437.52192`：apply 写入 4 个文件，提交因 `.git/index.lock: Operation not permitted` 失败，生成 `.kb-pending.json`；**Codex 按新规则把 commit-pending 命令原样转告，没有自己执行 git**
+  - 主会话核对 4 个文件和预览草稿逐字节一致后，在 Claude Code 运行 `commit-pending`：知识库提交 `68f59b4`，只包含记录中的 4 个文件，记录已删除，工作区干净，`kb check` 0 问题；草稿已删除
+  - 小改进点（不阻塞）：两次 Codex save 都在 index 条目之间多插了空行，SKILL 里 index 的示例写法可以更明确
 
 ## 变更记录
 
