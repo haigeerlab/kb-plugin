@@ -228,7 +228,7 @@ def _read_pending(root):
     except (OSError, UnicodeError, ValueError):
         raise KbError('无法读取待提交记录：JSON 损坏或文件不可读') from None
     if (not isinstance(record, dict) or type(record.get('schema')) is not int
-            or record['schema'] != 1 or record.get('operation') not in ('save', 'lint')
+            or record['schema'] != 1 or record.get('operation') not in ('save', 'lint', 'compile')
             or not isinstance(record.get('message'), str) or not record['message'].strip()
             or '\0' in record['message']
             or not isinstance(record.get('files'), dict) or not record['files']

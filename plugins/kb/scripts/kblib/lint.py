@@ -33,16 +33,13 @@ def _page_links(doc):
 
 def maintenance_hints(vault, stale_days):
     pages = vault.pages()
-    incoming, referenced = set(), set()
+    incoming = set()
     for doc in pages:
         for link in _page_links(doc):
             if not link.wiki:
                 target, error = checks._target(vault, doc.path, link.target)
                 if error is None and target != doc.path:
                     incoming.add(target)
-        raw = doc.frontmatter.data.get('raw', [])
-        if isinstance(raw, list):
-            referenced.update(value for value in raw if isinstance(value, str))
     hints = []
     for doc in pages:
         fm = doc.frontmatter
@@ -54,6 +51,17 @@ def maintenance_hints(vault, stale_days):
             if age > stale_days:
                 hints.append(checks.Finding('stale', doc.path, fm.lines.get('updated', 1),
                                             f'距上次更新 {age} 天，超过 {stale_days} 天，建议复查'))
+    return hints + inbox_backlog(vault)
+
+
+def inbox_backlog(vault):
+    """Return the shared backlog definition used by lint and compile candidates."""
+    referenced = set()
+    for doc in vault.pages():
+        raw = doc.frontmatter.data.get('raw', [])
+        if isinstance(raw, list):
+            referenced.update(value for value in raw if isinstance(value, str))
+    hints = []
     log = vault.documents.get('log.md')
     save_lines, in_save = [], False
     if log is not None:

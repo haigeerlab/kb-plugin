@@ -12,7 +12,7 @@ from .redaction import apply_aliases
 from .writer import WriteError as SaveError, empty_result
 
 
-def _read_draft(value, root, aliases):
+def _read_draft(value, root, aliases, operation='save'):
     draft = Path(value).expanduser()
     if '..' in draft.parts:
         raise SaveError('草稿目录禁止包含 .. 路径', 'path')
@@ -58,13 +58,17 @@ def _read_draft(value, root, aliases):
             count += replaced
 
     visit(draft)
-    if sum(path.startswith('inbox/') for path in content) != 1:
+    entry_count = sum(path.startswith('inbox/') for path in content)
+    if operation == 'compile':
+        if entry_count > 1:
+            raise SaveError('一次 compile 只允许包含 0 个或 1 个 inbox/ 下的新文件', 'path')
+    elif entry_count != 1:
         raise SaveError('一次 save 必须恰好包含 1 个 inbox/ 下的新文件', 'path')
     return originals, content, count
 
 
 def _title(content, changed):
-    entry = next(path for path in content if path.startswith('inbox/'))
+    entry = next((path for path in content if path.startswith('inbox/')), None)
     pages = [(path, parse_frontmatter(content[path]).data) for path in sorted(changed)
              if path.startswith('wiki/') and path.endswith('.md')]
     main_pages = [data for _, data in pages if entry in data.get('raw', [])
@@ -75,11 +79,17 @@ def _title(content, changed):
         main_pages = [data for _, data in pages]
     if main_pages:
         return main_pages[0]['title']
+    if entry is None:
+        raise SaveError('没有可写入的内容：compile 需要新建 inbox 或改动 wiki 页面', 'compile')
     title = parse_frontmatter(content[entry]).data.get('title')
     return title if isinstance(title, str) and title.strip() else Path(entry).name
 
 
 def save(draft, confirm=None):
+    return _publish_draft(draft, confirm, 'save')
+
+
+def _publish_draft(draft, confirm, operation):
     applying = confirm is not None
     result = empty_result(applying)
     blocklist = load_blocklist()
@@ -88,16 +98,20 @@ def save(draft, confirm=None):
     try:
         writer.reject_pending(root)
         state = writer.state(root)
-        originals, content, count = _read_draft(draft, root, aliases)
+        originals, content, count = _read_draft(draft, root, aliases, operation)
+        if operation == 'compile' and not any(path.startswith('inbox/') for path in content):
+            created, modified, _ = writer.diff(root, content)
+            if not any(path.startswith('wiki/') and path.endswith('.md') for path in created + modified):
+                raise SaveError('没有可写入的内容：compile 需要新建 inbox 或改动 wiki 页面', 'compile')
         return writer.publish(root, state, originals, content, confirm, result, blocklist,
-                              config_path(), lambda text, paths: 'save: ' + _title(text, paths),
-                              replaced_aliases=count)
+                              config_path(), lambda text, paths: operation + ': ' + _title(text, paths),
+                              operation=operation, replaced_aliases=count)
     except SaveError as error:
         result['ok'] = False
         result['findings'] = [{'code': error.code, 'path': error.path, 'line': 1, 'message': str(error)}]
         return writer.masked(result, blocklist), error.exit_code
     except (OSError, UnicodeError, ValueError, RuntimeError):
         result['ok'] = False
-        result['findings'] = [{'code': 'save', 'path': '.', 'line': 1,
+        result['findings'] = [{'code': operation, 'path': '.', 'line': 1,
                                'message': '无法读取草稿或校验知识库，请检查文件、权限与 git 状态'}]
         return writer.masked(result, blocklist), 1

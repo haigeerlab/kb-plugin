@@ -42,6 +42,7 @@ codex plugin add kb@kb-marketplace
 | `/kb:init` | 已实现 | 预览并确认后补齐知识库骨架，已有文件不覆盖 |
 | `/kb:save` | 已实现 | 草稿校验、预览，确认后保存一条经验并本地提交 |
 | `/kb:ask` | 已实现 | 只读检索知识库，基于候选页面回答并附出处，区分现行、过时与争议内容 |
+| `/kb:compile` | 已实现 | 整理 inbox 积压与候选会话，批量预览后逐条编译并本地提交 |
 | `/kb:lint` | 已实现 | 按影响分组体检知识库，提示维护事项，预览并确认后执行三类安全修复 |
 
 也可以直接使用脚本。从任何目录调用时，把脚本路径替换为本仓库内的绝对路径：
@@ -86,7 +87,7 @@ export KB_CONFIG="/临时目录/kb-config.json"
 
 ### git 身份
 
-`save` 和 `lint fix` 会在知识库里做本地提交，所以知识库所在目录必须能拿到 git 身份。全局设置了 `user.useConfigOnly = true`、身份只通过 `includeIf "gitdir:…"` 按目录引入时，知识库要放在被引入的目录下面（本机是 `~/Documents/haigeerlab/`）。放到其他目录时，写入会成功但提交会失败，报错为 `Author identity unknown`；文件会保留，不会回滚。
+`save`、`compile` 和 `lint fix` 会在知识库里做本地提交，所以知识库所在目录必须能拿到 git 身份。全局设置了 `user.useConfigOnly = true`、身份只通过 `includeIf "gitdir:…"` 按目录引入时，知识库要放在被引入的目录下面（本机是 `~/Documents/haigeerlab/`）。放到其他目录时，写入会成功但提交会失败，报错为 `Author identity unknown`；文件会保留，不会回滚。
 
 ## 初始化与契约检查
 
@@ -174,7 +175,7 @@ findings 使用中文原因和打码后的敏感值。退出码：`0` 成功，`
 
 ### 提交失败怎么办
 
-save apply 或 lint fix apply 已写入文件、但 `git add` 或提交失败时，会保留文件与暂存状态，并在知识库根目录生成 `.kb-pending.json`，记录本次文件的相对路径、写入后的 SHA-256、原定提交信息、操作、预览指纹和本地时间。错误消息会给出完整恢复命令：
+save apply、compile apply 或 lint fix apply 已写入文件、但 `git add` 或提交失败时，会保留文件与暂存状态，并在知识库根目录生成 `.kb-pending.json`，记录本次文件的相对路径、写入后的 SHA-256、原定提交信息、操作、预览指纹和本地时间。错误消息会给出完整恢复命令：
 
 ```bash
 python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py commit-pending
@@ -182,11 +183,51 @@ python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py commit-pending
 python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py commit-pending --json
 ```
 
-命令先核对文件内容与记录一致、工作区没有记录外的改动（含未跟踪文件），再运行全量 `kb check`；全部通过后只暂存并提交记录中的文件，沿用原提交信息，成功后删除记录并报告提交号。`.kb-pending.json` 不会被加入提交，`kb check` 和 lint 不扫描它。有记录时，save 与 lint fix 的 preview、apply 都会拒绝，提示先运行 `commit-pending`。
+命令先核对文件内容与记录一致、工作区没有记录外的改动（含未跟踪文件），再运行全量 `kb check`；全部通过后只暂存并提交记录中的文件，沿用原提交信息，成功后删除记录并报告提交号。`.kb-pending.json` 不会被加入提交，`kb check` 和 lint 不扫描它。有记录时，save、compile 与 lint fix 的 preview、apply 都会拒绝，提示先运行 `commit-pending`。
 
 退出码：`0` 提交成功；`1` 内容核对、工作区核对、全量检查或再次提交失败，保留记录；`2` 没有待提交记录、记录损坏或格式不符、用法或配置错误。`--json` 输出固定字段 `{ok, commit, files, findings, error}`。如果连记录也无法写入，会保留文件并报告原提交失败原因。
 
 在 Codex 沙箱内因 `.git` 不可写而失败时，把报错中的完整命令交给用户，在 Claude Code、终端或交互式 Codex 提权后运行。不要自己执行 `git add`、`git commit`，也不要修改 `.git`；直接使用 `commit-pending` 完成核对与提交。
+
+## 批量编译积压与候选会话
+
+`/kb:compile` 处理两类来源：没有 wiki `raw` 引用、也没有 save 日志处理记录的 inbox 积压，以及本机队列中 `pending` 的候选会话。积压判定与 lint 共用同一函数，save 日志正文写明路径的“没有新内容”条目也会排除。
+
+候选队列默认位于 `~/.local/state/kb/candidates.jsonl`，可用 `KB_STATE_DIR` 覆盖其父目录。它只保存本机会话指针，不放进知识库、不进入知识库的 Git 提交。每行一个 JSON 对象：
+
+```json
+{"id":"0123456789ab","session_id":"会话标识","transcript_path":"/绝对路径/会话.jsonl","cwd":"/绝对路径/项目","reason":"包含待整理经验","ended_at":"2026-11-19T16:00:00+08:00","status":"pending"}
+```
+
+`id` 是 `session_id` 的 SHA-256 前 12 位；`ended_at` 是最近入队时的本地 ISO 时间。状态为 `pending`、`compiled`、`dropped` 或 `expired`。同一 `session_id` 再次入队会更新路径、项目目录、原因和时间，`pending`/`expired` 恢复为 `pending`，`compiled`/`dropped` 保持原状态，不新增重复行。队列原子替换；损坏行跳过并报告行号，更新时保留其他行。
+
+```bash
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py candidates add --session-id <会话ID> --transcript /绝对路径/会话.jsonl --cwd /绝对路径/项目 --reason "待整理的经验"
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py candidates list --json
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py candidates show <候选ID> --max-chars 40000
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py candidates mark <候选ID> --status compiled
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py candidates mark <候选ID> --status dropped
+```
+
+`list` 不加 `--json` 时输出中文清单；JSON 的 `items` 合并 `kind: inbox` 积压和 `kind: candidate` 的待处理候选，`expired` 单列已过期项，`corrupt_lines` 列出损坏队列行号。会话文件不存在时自动写回 `expired`；候选距最近入队超过 25 天标为“即将过期”，恰好 25 天不标。
+`show` 只支持 Claude Code JSONL：保留非 meta、非子代理的用户字符串输入（移除 system-reminder 片段）和非子代理的 assistant text 块，按【用户】【助手】顺序输出。工具结果、工具调用、思考、附件和系统注入不输出；内置脱敏规则与配置目录旁的 `blocklist.txt` 对命中片段打码，保留上下文。打码后若超过默认 40000 字，只保留结尾并标注“已截断前 N 字”，末尾报告无法解析或识别的记录数。
+候选命令退出码：`0` 成功（含清单为空或跳过损坏行），`1` 业务失败（候选不存在、会话已过期或队列读写失败），`2` 用法或配置错误。`mark` 仅允许 `compiled`、`dropped`；丢弃只改队列，不写知识库。
+
+编译分三步，用户做两次决定：
+
+1. **清单**：列出全部积压和候选，为每项摘要并建议编译、丢弃或留着；等待用户挑选。同一会话的多条经验拆成多个清单项。
+2. **批量预览**：为每个选中项建立独立草稿，逐项运行 preview，集中展示处置、文件清单、完整 diff 和指纹；等待用户确认全部或其中一部分。
+3. **逐条写入**：仅 apply 已确认的项，每项独立事务、独立 `compile: <标题>` 提交，失败即停，已完成的事务保留。一个会话全部选定经验处理完后再标为 `compiled`。前一项改变 HEAD 后，后续项需重新预览并核对确认的内容；若预览内容变化，重新取得用户确认。
+
+```bash
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py compile preview /临时目录/编译草稿 --json
+# After explicit user confirmation, use the preview fingerprint:
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py compile apply /临时目录/编译草稿 --confirm <指纹> --json
+```
+
+积压项草稿不新建 inbox，wiki 的 `raw` 引用已有积压文件；候选会话草稿新建一个 inbox 摘录，承重事实从会话逐字摘录。compile 允许 0 或 1 个新 inbox，2 个及以上拒绝；其余白名单、代号替换、脱敏、全量叠加检查、指纹和原子写入复用 save。禁止修改已有 inbox/raw；0 个 inbox 且没有实际改动 wiki 页面时，提示“没有可写入的内容”并拒绝。标题优先取 wiki 主页面的 title，没有 wiki 改动时取 inbox title 或文件名；日志操作名写 `compile`。
+
+preview/apply 都支持 `--json`，字段与 save 相同。compile 退出码：`0` 成功，`1` 校验、脱敏、写入或提交失败，`2` 用法或配置错误，`3` 指纹不匹配。提交失败生成 `.kb-pending.json`，使用上面的 `commit-pending` 流程恢复；待提交期间拒绝新的写入。compile 不注册 SessionEnd hook，不读取 Codex 会话，不自动归档 ask 回答。
 
 ## 查询知识库
 
@@ -267,3 +308,5 @@ save 测试覆盖路径白名单、脱敏与代号替换、完整历史校验、
 ask 测试覆盖区域与代码块、整页 superseded、计分排序、截断、多词字面匹配、JSON 契约与退出码，以及干净和脏知识库中文件及 Git 状态保持不变；interface 检查在临时副本构造 ask skill，覆盖契约缺失、格式错误、版本和技能引用。
 
 lint 测试覆盖提示边界、日志排除、分组与规模指标、四类问题验收、三类安全修复、歧义候选、指纹失效、修复与日志同次提交，以及只读前后文件与 Git 状态不变；共享 writer 的重构由原有 save 测试和 lint 测试共同保护。
+
+候选与编译测试用临时 `KB_CONFIG`、`KB_STATE_DIR` 隔离配置和队列，覆盖去重、状态、损坏行、25 天边界、会话文本白名单、打码后截断，以及 compile 的 0/1/2 个 inbox、不可改原文、指纹、写入回滚和待提交恢复。端到端测试从一条积压和一条候选生成两份草稿，完成两个 compile 提交、候选标记与零问题契约检查。
