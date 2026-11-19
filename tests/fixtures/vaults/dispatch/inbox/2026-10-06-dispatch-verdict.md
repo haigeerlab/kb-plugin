@@ -1,0 +1,12 @@
+---
+captured: 2026-10-06
+source: session
+host: claude-code
+project: proj-example
+---
+# 实测结论：派活并不省钱（2026-10-06，tier-guard Phase 8 + 与 spec-guard 联调）
+
+整账算下来：小 task 派出去贵 15%～54%；派活后主会话轮次没有减少（每次子代理交回，主会话都要再读一遍整个上下文）。十几次对照里只有 L2 task 交 sonnet 那一次便宜过 23%，复跑不稳定。Codex 侧配合一次长等待也只是与不派持平。
+
+结论：省钱只来自「少跑的主会话轮次」，不来自子代理本身便宜。判据改为「派出去能不能明显减少主会话轮次」。默认不派，在主会话做。
+证据：tier-guard 仓 docs/research/2026-10-06-dispatch-verdict.md

@@ -1,0 +1,86 @@
+[
+  {
+    "code": "schema-version",
+    "path": "SCHEMA.md",
+    "old": "schema_version: 1",
+    "new": "schema_version: 2",
+    "line": 2
+  },
+  {
+    "code": "frontmatter",
+    "path": "wiki/pitfalls/example.md",
+    "old": "type: pitfall",
+    "new": "type: tech",
+    "line": 2
+  },
+  {
+    "code": "sections",
+    "path": "wiki/pitfalls/example.md",
+    "old": "## 症状",
+    "new": "## 其他",
+    "line": 1
+  },
+  {
+    "code": "filename",
+    "path": "wiki/pitfalls/Bad_name.md",
+    "old": null,
+    "new": null,
+    "line": 1
+  },
+  {
+    "code": "link",
+    "path": "wiki/pitfalls/example.md",
+    "old": "当前方法已经验证。",
+    "new": "[不存在](missing.md)",
+    "line": 15
+  },
+  {
+    "code": "raw-ref",
+    "path": "wiki/pitfalls/example.md",
+    "old": "raw: [inbox/2026-01-01-example.md, raw/example.md]",
+    "new": "raw: [raw/missing.md]",
+    "line": 7
+  },
+  {
+    "code": "evidence",
+    "path": "wiki/tech/example.md",
+    "old": "版本 v2.1.80 达到 42K。",
+    "new": "版本 v2.1.80 达到 55K。",
+    "line": 33
+  },
+  {
+    "code": "callout",
+    "path": "wiki/decisions/example.md",
+    "old": "> [!outdated] 2026-01-01 → [现行判据](#现行判据)",
+    "new": "> [!outdated] 无日期",
+    "line": 37
+  },
+  {
+    "code": "index",
+    "path": "index.md",
+    "old": "- [合法示例](wiki/pitfalls/example.md) — 当前方法示例 · 2026-01-01",
+    "new": "",
+    "line": 1
+  },
+  {
+    "code": "log",
+    "path": "log.md",
+    "old": "## [2026-01-01] init | 初始化知识库",
+    "new": "## [2026-01-01] unknown | 初始化知识库",
+    "line": 3
+  },
+  {
+    "code": "inbox",
+    "path": "inbox/2026-01-01-example.md",
+    "old": "host: unknown",
+    "new": "host: other",
+    "line": 4
+  },
+  {
+    "code": "immutable",
+    "path": "inbox/2026-01-01-example.md",
+    "old": "当前方法已经验证。",
+    "new": "改动已提交原文。",
+    "line": 1
+  }
+]
