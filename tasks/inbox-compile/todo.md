@@ -32,3 +32,7 @@
 - 新增测试 `test_host_injected_user_blocks_are_removed_and_entities_unescaped`；全量测试通过
 - 真实会话复验（`a0c5b61b1bcd`，只统计不输出内容）：三种注入标签各 0、`&gt;`/`&amp;` 各 0、`<bash-input>` 13 条保留，"无法识别" 898 → 0
 - 发现 4（页面之间不互链）不属于本模块范围，记入 MVP 验收的已知缺口
+
+## 最终验收
+
+- [x] 用户 2026-11-19 批准最终验收（同时批准 Spec 中「T4 后修正」那行提取规则修订）
