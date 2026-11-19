@@ -255,6 +255,7 @@ def fix(confirm=None):
     blocklist = load_blocklist()
     root = resolve_vault().resolve()
     try:
+        writer.reject_pending(root)
         initial_state = writer.state(root)
         vault = Vault.load()
         health = report(vault)

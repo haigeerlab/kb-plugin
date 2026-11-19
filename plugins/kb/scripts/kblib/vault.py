@@ -25,6 +25,7 @@ REQUIRED_SECTIONS = {
 }
 DIRECTORIES = ('inbox', 'raw', 'wiki', *(f'wiki/{name}' for name in TYPE_DIRS.values()), 'templates')
 SCHEMA_VERSION = 1
+PENDING_FILE = '.kb-pending.json'
 
 
 def today():
@@ -77,6 +78,8 @@ class Vault:
                 relative = target.relative_to(root).as_posix()
             except ValueError:
                 raise KbError(f'检查路径必须位于知识库内：{value}') from None
+            if relative == PENDING_FILE:
+                continue
             if not target.exists() or not (target.is_file() or target.is_dir()):
                 raise KbError(f'检查路径不存在或不是普通文件、目录：{value}')
             if target.is_dir():
@@ -88,10 +91,13 @@ class Vault:
         documents, files, errors = {}, set(), {}
         try:
             for directory, dirs, names in os.walk(root, followlinks=False):
-                dirs[:] = sorted(d for d in dirs if d != '.git')
+                dirs[:] = sorted(d for d in dirs if d != '.git'
+                                 and not (Path(directory) == root and d == PENDING_FILE))
                 for name in sorted(names):
                     path = Path(directory) / name
                     relative = path.relative_to(root).as_posix()
+                    if relative == PENDING_FILE:
+                        continue
                     if not path.resolve().is_relative_to(root) or not path.is_file():
                         continue
                     files.add(relative)

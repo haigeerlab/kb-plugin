@@ -19,6 +19,7 @@ from kblib.lint import (fix as lint_fix, print_fix as print_lint_fix,
 from kblib.redaction import apply_aliases, mask_text, parse_allowlist, scan
 from kblib.save import empty_result as empty_save_result, save
 from kblib.vault import Vault
+from kblib.writer import commit_pending, empty_pending_result
 
 
 class ChineseParser(argparse.ArgumentParser):
@@ -39,6 +40,7 @@ class ChineseParser(argparse.ArgumentParser):
             "kb.py redact <文件|-> [--json | --apply-aliases]；"
             "kb.py save preview <草稿目录> [--json]；"
             "kb.py save apply <草稿目录> --confirm <指纹> [--json]；"
+            "kb.py commit-pending [--json]；"
             "kb.py ask search <词> [<词> ...] [--limit N] [--json]。运行 --help 查看帮助。"
         )
 
@@ -74,6 +76,8 @@ def build_parser():
     apply.add_argument('draft', metavar='草稿目录', help='已经预览并确认的草稿目录')
     apply.add_argument('--confirm', required=True, metavar='指纹', help='用户确认的预览指纹')
     apply.add_argument('--json', action='store_true', help='输出 JSON 对象')
+    pending = commands.add_parser('commit-pending', help='核对待提交文件与全部契约后完成本地提交')
+    pending.add_argument('--json', action='store_true', help='输出 JSON 对象')
     asker = commands.add_parser('ask', help='只读检索知识库')
     actions = asker.add_subparsers(dest='action', required=True, metavar='检索命令')
     searcher = actions.add_parser('search', help='按多个词任意匹配知识页面')
@@ -133,7 +137,7 @@ def main(argv=None):
     blocklist = []
     try:
         args = build_parser().parse_args(argv)
-        if args.command in ('check', 'redact', 'save', 'lint'):
+        if args.command in ('check', 'redact', 'save', 'lint', 'commit-pending'):
             blocklist = load_blocklist()
         if args.command == "doctor":
             result = diagnose()
@@ -146,6 +150,8 @@ def main(argv=None):
             result, redacted_text = redact(args, blocklist)
         elif args.command == 'save':
             result, exit_code = save(args.draft, args.confirm if args.action == 'apply' else None)
+        elif args.command == 'commit-pending':
+            result, exit_code = commit_pending()
         elif args.command == 'lint':
             if args.action == 'fix':
                 result, exit_code = lint_fix(args.confirm if args.fix_action == 'apply' else None)
@@ -155,16 +161,19 @@ def main(argv=None):
             result = search(Vault.load(), args.terms, args.limit)
         else:
             result = set_vault(args.path, args.confirm)
-        if args.command != 'save' and not (args.command == 'lint' and args.action == 'fix'):
+        if args.command not in ('save', 'commit-pending') and not (args.command == 'lint' and args.action == 'fix'):
             exit_code = (0 if result['pages'] else 1) if args.command == 'ask' else (0 if result["ok"] else 1)
     except KbError as error:
-        message = mask_text(str(error), blocklist) if command in ('check', 'redact', 'save', 'lint') else str(error)
+        message = mask_text(str(error), blocklist) if command in ('check', 'redact', 'save', 'lint', 'commit-pending') else str(error)
         if command == 'lint' and message.startswith('命令或参数无效。用法：'):
             message = ('体检用法错误。用法：kb.py lint [--json] [--stale-days N]；'
                        'kb.py lint fix preview [--json]；'
                        'kb.py lint fix apply --confirm <指纹> [--json]。运行 --help 查看帮助。')
         result = {"ok": False, "config": str(config_path()), "error": message}
-        if command == 'save':
+        if command == 'commit-pending':
+            result = empty_pending_result()
+            result['error'] = message
+        elif command == 'save':
             result = empty_save_result(len(argv) > 1 and argv[1] == 'apply')
             result['findings'] = [{'code': 'config' if '用法' not in message else 'usage',
                                    'path': '.', 'line': 1, 'message': message}]
@@ -187,6 +196,13 @@ def main(argv=None):
         exit_code = error.exit_code
     if "--json" in argv:
         print(json.dumps(result, ensure_ascii=False))
+    elif command == 'commit-pending':
+        for finding in result['findings']:
+            print(f"{finding['path']}:{finding['line']} [{finding['code']}] {finding['message']}")
+        if result['ok']:
+            print(f"待提交文件已本地提交：{result['commit']}")
+        else:
+            print(result['error'], file=sys.stderr)
     elif command == 'save':
         for finding in result['findings']:
             print(f"{finding['path']}:{finding['line']} [{finding['code']}] {finding['message']}")

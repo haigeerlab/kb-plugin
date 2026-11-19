@@ -172,6 +172,22 @@ apply 重跑同样的校验并比较指纹；知识库 HEAD、工作区状态、
 两条命令都支持 `--json`：preview 固定字段为 `{ok, fingerprint, created, modified, diff, replaced_aliases, findings}`；apply 为 `{ok, commit, created, modified, findings}`。
 findings 使用中文原因和打码后的敏感值。退出码：`0` 成功，`1` 校验或脱敏失败、写入或提交失败，`2` 用法或配置错误，`3` 指纹不匹配。
 
+### 提交失败怎么办
+
+save apply 或 lint fix apply 已写入文件、但 `git add` 或提交失败时，会保留文件与暂存状态，并在知识库根目录生成 `.kb-pending.json`，记录本次文件的相对路径、写入后的 SHA-256、原定提交信息、操作、预览指纹和本地时间。错误消息会给出完整恢复命令：
+
+```bash
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py commit-pending
+# To get a structured result:
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py commit-pending --json
+```
+
+命令先核对文件内容与记录一致、工作区没有记录外的改动（含未跟踪文件），再运行全量 `kb check`；全部通过后只暂存并提交记录中的文件，沿用原提交信息，成功后删除记录并报告提交号。`.kb-pending.json` 不会被加入提交，`kb check` 和 lint 不扫描它。有记录时，save 与 lint fix 的 preview、apply 都会拒绝，提示先运行 `commit-pending`。
+
+退出码：`0` 提交成功；`1` 内容核对、工作区核对、全量检查或再次提交失败，保留记录；`2` 没有待提交记录、记录损坏或格式不符、用法或配置错误。`--json` 输出固定字段 `{ok, commit, files, findings, error}`。如果连记录也无法写入，会保留文件并报告原提交失败原因。
+
+在 Codex 沙箱内因 `.git` 不可写而失败时，把报错中的完整命令交给用户，在 Claude Code、终端或交互式 Codex 提权后运行。不要自己执行 `git add`、`git commit`，也不要修改 `.git`；直接使用 `commit-pending` 完成核对与提交。
+
 ## 查询知识库
 
 在任意项目中运行 `/kb:ask <问题>`，或直接调用确定性的只读检索脚本：

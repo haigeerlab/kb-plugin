@@ -89,6 +89,8 @@ python3 -B "$ROOT/scripts/kb.py" lint fix apply --confirm <指纹>
 
 - 退出码 3：知识库在预览之后发生了变化，回到本步重新预览，再请用户确认。
 - 成功：报告提交号，并重新运行第 2 步，确认已修复的问题不再出现。
+- 报"文件已写入但提交失败；已记录待提交"：把报错里给出的 `commit-pending` 命令**原样**告诉用户，请用户在 Claude Code、终端，或者在交互式 Codex 里申请提权后运行。**不要自己执行 `git add`、`git commit`，也不要去改 `.git` 或 `.kb-pending.json`。**
+- 报"有待提交记录"：先请用户运行 `commit-pending`，完成后再从第 2 步开始。
 
 ## 5. 自动修复范围以外的问题
 

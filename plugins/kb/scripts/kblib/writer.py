@@ -1,19 +1,22 @@
 """Shared validation, preview fingerprints and atomic vault publishing."""
 
 from dataclasses import asdict, replace
+from datetime import datetime
 import difflib
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
+import shlex
 import stat
 import tempfile
 
 from . import KbError, checks
-from .config import read_optional_text
+from .config import load_blocklist, read_optional_text, resolve_vault
 from .redaction import mask_text, parse_allowlist, scan
-from .vault import Vault, git, is_git_repository
+from .vault import PENDING_FILE, Vault, git, is_git_repository
 
 
 class WriteError(KbError):
@@ -33,6 +36,17 @@ def empty_result(apply=False):
     else:
         result.update(fingerprint=None, diff='', replaced_aliases=0)
     return result
+
+
+def pending_command():
+    entry = shlex.quote(str(Path(__file__).resolve().parents[1] / 'kb.py'))
+    return 'python3 -B ' + entry + ' commit-pending'
+
+
+def reject_pending(root):
+    pending = root / PENDING_FILE
+    if pending.exists() or pending.is_symlink():
+        raise WriteError('知识库有待提交记录，请先运行：' + pending_command(), 'pending')
 
 
 def state(root):
@@ -199,6 +213,93 @@ def commit(root, paths, message):
     return head.stdout.decode('ascii').strip()
 
 
+def empty_pending_result():
+    return {'ok': False, 'commit': None, 'files': [], 'findings': [], 'error': None}
+
+
+def _read_pending(root):
+    path = root / PENDING_FILE
+    if path.is_symlink():
+        raise KbError('待提交记录不能是符号链接')
+    try:
+        record = json.loads(path.read_text(encoding='utf-8'))
+    except FileNotFoundError:
+        raise KbError('没有待提交记录') from None
+    except (OSError, UnicodeError, ValueError):
+        raise KbError('无法读取待提交记录：JSON 损坏或文件不可读') from None
+    if (not isinstance(record, dict) or type(record.get('schema')) is not int
+            or record['schema'] != 1 or record.get('operation') not in ('save', 'lint')
+            or not isinstance(record.get('message'), str) or not record['message'].strip()
+            or '\0' in record['message']
+            or not isinstance(record.get('files'), dict) or not record['files']
+            or not isinstance(record.get('fingerprint'), str)
+            or not re.fullmatch(r'[0-9a-f]{16}', record['fingerprint'])
+            or not isinstance(record.get('created'), str)):
+        raise KbError('待提交记录格式无效：需要 schema 1 及完整的提交信息、文件哈希与预览信息')
+    try:
+        datetime.fromisoformat(record['created'])
+    except ValueError:
+        raise KbError('待提交记录格式无效：created 必须是 ISO 时间') from None
+    for relative, digest in record['files'].items():
+        path = Path(relative)
+        if (not relative or '\0' in relative or path.as_posix() != relative
+                or path.is_absolute() or '..' in path.parts or '\\' in relative
+                or any(part.lower() == '.git' for part in path.parts)
+                or relative == PENDING_FILE or relative == '.'
+                or not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest)):
+            raise KbError('待提交记录格式无效：文件必须是库内相对路径，并带 SHA-256 哈希')
+    return record
+
+
+def _verify_pending(root, files):
+    for relative, expected in files.items():
+        target = target_path(root, relative)
+        if not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest() != expected:
+            raise WriteError('待提交文件缺失或内容与记录不一致：' + relative)
+    status = git(root, 'status', '--porcelain=v1', '-z', '--untracked-files=all')
+    if status.returncode:
+        raise WriteError('无法读取知识库 git 状态')
+    entries = iter(status.stdout.split(b'\0'))
+    changed = set()
+    for entry in entries:
+        if not entry:
+            continue
+        changed.add(os.fsdecode(entry[3:]))
+        if b'R' in entry[:2] or b'C' in entry[:2]:
+            changed.add(os.fsdecode(next(entries, b'')))
+    if changed - set(files) - {PENDING_FILE}:
+        raise WriteError('知识库有待提交记录以外的改动（含未跟踪文件），请先处理这些改动')
+
+
+def commit_pending():
+    result = empty_pending_result()
+    blocklist = load_blocklist()
+    root = resolve_vault().resolve()
+    try:
+        record = _read_pending(root)
+        result['files'] = sorted(record['files'])
+        state(root)
+        _verify_pending(root, record['files'])
+        result['findings'] = [asdict(f) for f in checks.check(Vault.load())]
+        if result['findings']:
+            raise WriteError('知识库全量检查未通过，请先处理检查问题；待提交记录已保留')
+        # Recheck after the full scan so changes made during checks are refused.
+        _verify_pending(root, record['files'])
+        result['commit'] = commit(root, result['files'], record['message'])
+        (root / PENDING_FILE).unlink()
+        result['ok'] = True
+        exit_code = 0
+    except KbError as error:
+        result['error'] = mask_text(str(error), blocklist)
+        exit_code = error.exit_code
+    except (OSError, UnicodeError, ValueError, RuntimeError):
+        result['error'] = ('提交已完成，但无法删除待提交记录，请检查文件权限'
+                           if result['commit'] else '无法核对或提交待提交文件，请检查文件、权限与 git 状态')
+        exit_code = 1
+    result['files'] = [mask_text(path, blocklist) for path in result['files']]
+    return result, exit_code
+
+
 def masked(result, blocklist):
     # Diff may include old content; diagnostics and filenames share redact's rules.
     result['findings'] = [{**f, 'path': mask_text(f['path'], blocklist),
@@ -213,6 +314,7 @@ def masked(result, blocklist):
 def publish(root, initial_state, originals, content, confirm, result, blocklist,
             original_config, commit_message, operation='save', replaced_aliases=0):
     """Validate an overlay, then preview or publish the caller-approved content."""
+    reject_pending(root)
     applying = confirm is not None
     token = fingerprint(initial_state, originals, content)
     if applying and token != confirm:
@@ -240,7 +342,22 @@ def publish(root, initial_state, originals, content, confirm, result, blocklist,
         paths = sorted(created + modified)
         message = commit_message(content, paths)
         atomic_write(root, {path: content[path] for path in paths})
-        result['commit'] = commit(root, paths, message)
+        try:
+            result['commit'] = commit(root, paths, message)
+        except (WriteError, OSError) as error:
+            record = {'schema': 1, 'operation': 'lint' if operation == 'lint fix' else operation,
+                      'message': message,
+                      'files': {path: hashlib.sha256((root / path).read_bytes()).hexdigest()
+                                for path in paths},
+                      'fingerprint': token, 'created': datetime.now().astimezone().isoformat()}
+            try:
+                atomic_write(root, {PENDING_FILE: json.dumps(record, ensure_ascii=False, indent=2) + '\n'})
+            except (WriteError, OSError):
+                raise error
+            reason = mask_text(str(error), blocklist)
+            raise WriteError('文件已写入但提交失败（原因：' + reason + '，已打码）；'
+                             '已保留写入文件与暂存状态；已记录待提交，请在可写 .git 的环境运行：'
+                             + pending_command()) from None
     else:
         result.update(fingerprint=token, diff=changes)
     return masked(result, blocklist), 0

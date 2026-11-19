@@ -86,6 +86,7 @@ def save(draft, confirm=None):
     aliases = load_aliases()
     root = resolve_vault().resolve()
     try:
+        writer.reject_pending(root)
         state = writer.state(root)
         originals, content, count = _read_draft(draft, root, aliases)
         return writer.publish(root, state, originals, content, confirm, result, blocklist,

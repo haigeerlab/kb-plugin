@@ -175,6 +175,8 @@ python3 -B "$ROOT/scripts/kb.py" save apply "$DRAFT" --confirm <指纹>
 ```
 
 - 退出码 3：说明知识库或草稿在预览之后发生了变化，回到第 7 步重新预览，再给用户确认。
+- 报"文件已写入但提交失败；已记录待提交"（常见于 Codex 沙箱不允许写 `.git`）：把报错里给出的 `commit-pending` 命令**原样**告诉用户，请用户在 Claude Code、终端，或者在交互式 Codex 里申请提权后运行。**不要自己执行 `git add`、`git commit`，也不要去改 `.git` 或 `.kb-pending.json`。** 草稿目录先保留，等用户告诉你已经提交了再删。
+- preview 或 apply 报"有待提交记录"：说明上一次写入还没提交，先请用户运行 `commit-pending`，完成后再回到第 7 步。
 - 其他失败：原样转述，不要手动去改知识库。
 
 ## 10. 报告
