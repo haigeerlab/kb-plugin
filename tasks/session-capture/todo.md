@@ -19,3 +19,7 @@
   - 如实记录：这次测试会话的 entrypoint 是 `cli`，与本会话（桌面 app）的 `claude-desktop` 不同，无法从记录判断它是在桌面 app 还是终端里开的。已确认的是"交互式 Claude Code 会话 + /clear 会触发采集"；桌面 app 里归档或关闭标签页是否触发 SessionEnd，转为延期项
   - 收尾修复：① `capture status` 去掉过时的"hook 需启用后才生效"；② README 的"尚未启用"改为已启用并写明实测结果；③ **回归**：`test_capture.py` 写死读 `hooks.json.draft`，启用（`b2bdf33`）后报 FileNotFoundError。原因是启用那次提交只跑了清单检查、没跑全量测试；已改为优先读 hooks.json，全量测试通过
 - [ ] 延期：桌面 app 里归档或关闭 Code 会话标签页是否触发 SessionEnd；恢复条件：用户下次在桌面 app 里归档一个有 2 条以上发言的 Code 会话后，检查队列
+
+## 最终验收
+
+- [x] 用户 2026-11-19 批准最终验收（Spec 未修改；桌面 app 归档是否触发 SessionEnd 保留为延期项）
