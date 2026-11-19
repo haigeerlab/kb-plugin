@@ -229,6 +229,30 @@ python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py compile apply /临�
 
 preview/apply 都支持 `--json`，字段与 save 相同。compile 退出码：`0` 成功，`1` 校验、脱敏、写入或提交失败，`2` 用法或配置错误，`3` 指纹不匹配。提交失败生成 `.kb-pending.json`，使用上面的 `commit-pending` 流程恢复；待提交期间拒绝新的写入。compile 不注册 SessionEnd hook，不读取 Codex 会话，不自动归档 ask 回答。
 
+## 会话结束自动记候选
+
+当前 hook 配置为 `plugins/kb/hooks/hooks.json.draft`，**尚未启用**；需要主会话复核并启用后才生效。只用于 Claude Code，Codex 不采集。启用后，所有结束原因都会触发 SessionEnd；桌面 app 是否触发，需要启用后另做真实会话验收。
+
+采集只把会话 ID、会话记录路径、工作目录、结束原因记入本机候选队列，沿用队列的短哈希、时间和处理状态，**不记录会话内容**。脚本只读取记录来计数，不摘录、不调用模型、不联网、不写知识库，也不修改配置。下次 `/kb:compile` 时再由你选择处理哪些候选。
+
+配置 `session_capture` 默认 `true`，`capture_min_user_messages` 默认 `2`，`capture_ignore_dirs` 默认空数组。只统计非 meta、非子代理的用户消息：字符串或 text 块移除 `system-reminder`、`task-notification`、`side-sessions-event` 注入块后仍有非空文字才算一条；工具结果、附件和助手消息不计数，同一条消息含多个 text 块也只算一条。计数达到阈值就停止读取；不足阈值不入队。同一会话去重，已编译或已丢弃状态保持不变。
+
+排除目录按规范化后的完整路径分量匹配，包括目录自身和所有子目录；`/a/b` 不会误排除 `/a/bc`。知识库目录和插件源码目录默认也可以入队。
+
+```bash
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py capture status
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py capture status --json
+# Preview first; append --confirm to write after reviewing:
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py config set-capture --enabled false
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py config set-capture --enabled true --min-user-messages 3 --ignore-dir /项目/公司项目 /项目/自动化目录
+# Clear the exclusion list:
+python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py config set-capture --enabled true --ignore-dir
+```
+
+`set-capture` 支持 `--json`，先预览完整配置，只有 `--confirm` 才写入，并保留已有的其他字段；不传阈值或排除目录选项时保留原值。状态命令显示开关、阈值、排除目录、队列中 `pending` 数量、日志位置和最后 5 行；不更新队列状态。配置类型错误或损坏时，状态查询退出 `2`，hook 记日志并跳过。
+
+hook 始终静默退出 `0`，超时为 5 秒。异常原因追加到 `~/.local/state/kb/capture.log`（设置 `KB_STATE_DIR` 后为该目录下的 `capture.log`），每行包含本地 ISO 时间、原因和可取得的会话 ID。日志超过 1MB 后保留后半部完整行；日志无法写入时也静默退出。正常过滤或成功入队不写日志。
+
 ## 查询知识库
 
 在任意项目中运行 `/kb:ask <问题>`，或直接调用确定性的只读检索脚本：
@@ -310,3 +334,5 @@ ask 测试覆盖区域与代码块、整页 superseded、计分排序、截断�
 lint 测试覆盖提示边界、日志排除、分组与规模指标、四类问题验收、三类安全修复、歧义候选、指纹失效、修复与日志同次提交，以及只读前后文件与 Git 状态不变；共享 writer 的重构由原有 save 测试和 lint 测试共同保护。
 
 候选与编译测试用临时 `KB_CONFIG`、`KB_STATE_DIR` 隔离配置和队列，覆盖去重、状态、损坏行、25 天边界、会话文本白名单、打码后截断，以及 compile 的 0/1/2 个 inbox、不可改原文、指纹、写入回滚和待提交恢复。端到端测试从一条积压和一条候选生成两份草稿，完成两个 compile 提交、候选标记与零问题契约检查。
+
+会话采集测试覆盖消息过滤、阈值、目录边界、关闭、去重、异常静默与日志轮转、配置预览和保留其他字段、只读状态查询、5MB 记录提前停止读取，以及 draft 命令原样执行和清单校验；核验采集前后知识库与配置文件不变。

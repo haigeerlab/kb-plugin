@@ -2,16 +2,19 @@
 """Command dispatcher for the kb plugin."""
 
 import argparse
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import asdict
+import io
 import json
+import os
 from pathlib import Path
 import sys
 
-from kblib import KbError, candidates
+from kblib import KbError, candidates, capture
 from kblib.ask import search
 from kblib.compile import compile as compile_draft
 from kblib.config import (config_path, load_aliases, load_blocklist, read_optional_text,
-                          resolve_vault, set_vault)
+                          resolve_vault, set_vault, set_capture)
 from kblib.doctor import diagnose
 from kblib.checks import check as check_vault
 from kblib.init import initialize
@@ -42,6 +45,8 @@ class ChineseParser(argparse.ArgumentParser):
             "kb.py save preview <草稿目录> [--json]；"
             "kb.py save apply <草稿目录> --confirm <指纹> [--json]；"
             "kb.py candidates add|list|show|mark …；"
+            "kb.py capture status [--json]；kb.py capture hook；"
+            "kb.py config set-capture --enabled true|false [--min-user-messages N] [--ignore-dir 路径 ...] [--confirm] [--json]；"
             "kb.py compile preview|apply <草稿目录> …；"
             "kb.py commit-pending [--json]；"
             "kb.py ask search <词> [<词> ...] [--limit N] [--json]。运行 --help 查看帮助。"
@@ -59,6 +64,18 @@ def build_parser():
     setter.add_argument("path", metavar="路径", help="已存在的知识库目录")
     setter.add_argument("--confirm", action="store_true", help="确认写入配置；默认只预览")
     setter.add_argument("--json", action="store_true", help="输出 JSON 对象")
+    setter = actions.add_parser('set-capture', help='预览或写入会话结束采集配置')
+    setter.add_argument('--enabled', required=True, choices=('true', 'false'), help='是否开启采集')
+    setter.add_argument('--min-user-messages', type=int, metavar='N', help='用户消息阈值，必须为正整数')
+    setter.add_argument('--ignore-dir', nargs='*', action='extend', default=None, metavar='路径',
+                        help='排除目录前缀；不传保留原值，仅传选项清空列表')
+    setter.add_argument('--confirm', action='store_true', help='确认写入配置；默认只预览')
+    setter.add_argument('--json', action='store_true', help='输出 JSON 对象')
+    collector = commands.add_parser('capture', help='会话结束静默采集与状态查询')
+    actions = collector.add_subparsers(dest='action', required=True, metavar='采集命令')
+    actions.add_parser('hook', help='从标准输入读取 SessionEnd，静默记录候选指针')
+    status = actions.add_parser('status', help='只读查看采集配置、队列数量和最近日志')
+    status.add_argument('--json', action='store_true', help='输出 JSON 对象')
     initializer = commands.add_parser("init", help="预览或初始化知识库骨架")
     initializer.add_argument("--confirm", action="store_true", help="确认创建；默认只预览")
     initializer.add_argument("--json", action="store_true", help="输出 JSON 对象")
@@ -149,6 +166,14 @@ def print_redaction(result, stream):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:2] == ['capture', 'hook']:
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            try:
+                build_parser().parse_args(argv)
+                capture.run_hook(sys.stdin.read(), os.environ)
+            except BaseException as error:
+                capture.log_error('采集入口失败：' + type(error).__name__, os.environ)
+        return 0
     command = argv[0] if argv else None
     is_doctor = command == "doctor"
     redacted_text = None
@@ -187,6 +212,10 @@ def main(argv=None):
                 result = lint_report(Vault.load(), args.stale_days)
         elif args.command == 'ask':
             result = search(Vault.load(), args.terms, args.limit)
+        elif args.command == 'capture':
+            result = capture.status()
+        elif args.command == 'config' and args.action == 'set-capture':
+            result = set_capture(args.enabled == 'true', args.min_user_messages, args.ignore_dir, args.confirm)
         else:
             result = set_vault(args.path, args.confirm)
         if args.command not in ('save', 'compile', 'commit-pending') and not (args.command == 'lint' and args.action == 'fix'):
@@ -259,6 +288,8 @@ def main(argv=None):
             print_lint_fix(result)
         else:
             print_lint_report(result)
+    elif command == 'capture':
+        capture.print_status(result)
     elif command == 'ask':
         zones = {'current': '现行', 'outdated': '过时', 'disputed': '争议'}
         statuses = {'current': '现行', 'superseded': '已被取代'}

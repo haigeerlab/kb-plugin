@@ -24,13 +24,13 @@ class CandidateError(KbError):
     exit_code = 1
 
 
-def queue_path():
-    return Path(os.environ.get('KB_STATE_DIR') or '~/.local/state/kb').expanduser() / 'candidates.jsonl'
+def queue_path(environ=os.environ):
+    return Path(environ.get('KB_STATE_DIR') or '~/.local/state/kb').expanduser() / 'candidates.jsonl'
 
 
-def _read_queue():
+def _read_queue(environ=os.environ):
     try:
-        lines = queue_path().read_bytes().splitlines(keepends=True)
+        lines = queue_path(environ).read_bytes().splitlines(keepends=True)
     except FileNotFoundError:
         lines = []
     except OSError:
@@ -52,8 +52,8 @@ def _read_queue():
     return rows, corrupt
 
 
-def _write_queue(rows, changed):
-    path = queue_path()
+def _write_queue(rows, changed, environ=os.environ):
+    path = queue_path(environ)
     temporary = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,11 +81,11 @@ def _identifier(session_id):
     return hashlib.sha256(session_id.encode('utf-8')).hexdigest()[:12]
 
 
-def add(session_id, transcript_path, cwd, reason):
+def add(session_id, transcript_path, cwd, reason, environ=os.environ):
     if any(not isinstance(value, str) or not value.strip() or '\0' in value
            for value in (session_id, transcript_path, cwd, reason)):
         raise KbError('候选入队参数必须是非空字符串，且不能包含空字符')
-    rows, corrupt = _read_queue()
+    rows, corrupt = _read_queue(environ)
     index = next((index for index, (_, record) in enumerate(rows)
                   if record is not None and record['session_id'] == session_id), len(rows))
     old_status = rows[index][1]['status'] if index < len(rows) else 'pending'
@@ -98,7 +98,7 @@ def add(session_id, transcript_path, cwd, reason):
         rows.append([b'', record])
     else:
         rows[index][1] = record
-    _write_queue(rows, {index})
+    _write_queue(rows, {index}, environ)
     return {'ok': True, 'candidate': record, 'corrupt_lines': corrupt}
 
 

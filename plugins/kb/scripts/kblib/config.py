@@ -108,3 +108,59 @@ def set_vault(value: str, confirm: bool = False) -> dict:
         except (OSError, UnicodeError):
             raise configuration_error(path, "无法写入配置文件，请检查路径与权限") from None
     return {"ok": True, "config": str(path), "content": content, "written": confirm, "error": None}
+
+
+CAPTURE_DEFAULTS = {'session_capture': True, 'capture_min_user_messages': 2,
+                    'capture_ignore_dirs': []}
+
+
+def _capture_config(environ):
+    path = config_path(environ)
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except FileNotFoundError:
+        return {}
+    except (OSError, UnicodeError, ValueError):
+        raise KbError(f'采集配置 {path}：无法读取配置或 JSON 损坏') from None
+    if not isinstance(data, dict):
+        raise KbError(f'采集配置 {path}：配置必须是 JSON 对象')
+    if 'version' in data and (type(data['version']) is not int or data['version'] != 1):
+        raise KbError(f'采集配置 {path}：version 仅支持整数 1')
+    return data
+
+
+def _capture_settings(data):
+    settings = {key: data.get(key, default) for key, default in CAPTURE_DEFAULTS.items()}
+    if type(settings['session_capture']) is not bool:
+        raise KbError('采集配置：session_capture 必须是布尔值')
+    minimum = settings['capture_min_user_messages']
+    if type(minimum) is not int or minimum <= 0:
+        raise KbError('采集配置：capture_min_user_messages 必须是正整数')
+    ignored = settings['capture_ignore_dirs']
+    if (not isinstance(ignored, list)
+            or any(not isinstance(value, str) or not value.strip() or '\0' in value for value in ignored)):
+        raise KbError('采集配置：capture_ignore_dirs 必须是非空路径字符串的数组')
+    return settings
+
+
+def load_capture(environ: Mapping[str, str] = os.environ) -> dict:
+    return _capture_settings(_capture_config(environ))
+
+
+def set_capture(enabled, min_user_messages=None, ignore_dirs=None, confirm=False) -> dict:
+    path = config_path()
+    content = _capture_config(os.environ)
+    content.setdefault('version', 1)
+    content['session_capture'] = enabled
+    if min_user_messages is not None:
+        content['capture_min_user_messages'] = min_user_messages
+    if ignore_dirs is not None:
+        content['capture_ignore_dirs'] = ignore_dirs
+    content.update(_capture_settings(content))
+    if confirm:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(content, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        except (OSError, UnicodeError):
+            raise KbError(f'采集配置 {path}：无法写入配置文件，请检查路径与权限') from None
+    return {'ok': True, 'config': str(path), 'content': content, 'written': confirm, 'error': None}
