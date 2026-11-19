@@ -84,7 +84,7 @@ def status(environ=os.environ):
             'pending': sum(record is not None and record['status'] == 'pending' for _, record in rows),
             'corrupt_lines': corrupt, 'log': str(path), 'log_tail': tail,
             'notice': '只记录会话 ID、记录路径、工作目录与结束原因，不记录会话内容。'
-                      '关闭：kb.py config set-capture --enabled false --confirm；hook 需启用后才生效。'}
+                      '关闭：kb.py config set-capture --enabled false --confirm。'}
 
 
 def print_status(result):

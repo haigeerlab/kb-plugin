@@ -231,7 +231,7 @@ preview/apply 都支持 `--json`，字段与 save 相同。compile 退出码：`
 
 ## 会话结束自动记候选
 
-当前 hook 配置为 `plugins/kb/hooks/hooks.json.draft`，**尚未启用**；需要主会话复核并启用后才生效。只用于 Claude Code，Codex 不采集。启用后，所有结束原因都会触发 SessionEnd；桌面 app 是否触发，需要启用后另做真实会话验收。
+hook 配置在 `plugins/kb/hooks/hooks.json`，**已启用**（2026-11-19）。只用于 Claude Code，Codex 不采集。所有结束原因都会触发 SessionEnd；已实测：`claude -p` 结束时触发（reason=other），交互式会话里输入 `/clear` 时触发（reason=clear）。桌面 app 里归档或关闭会话标签页是否触发，尚未单独验证。
 
 采集只把会话 ID、会话记录路径、工作目录、结束原因记入本机候选队列，沿用队列的短哈希、时间和处理状态，**不记录会话内容**。脚本只读取记录来计数，不摘录、不调用模型、不联网、不写知识库，也不修改配置。下次 `/kb:compile` 时再由你选择处理哪些候选。
 

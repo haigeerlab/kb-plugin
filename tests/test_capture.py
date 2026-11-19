@@ -373,7 +373,12 @@ class CaptureTests(unittest.TestCase):
         self.assertFalse(json.loads(result.stdout)['ok'])
 
     def test_draft_command_runs_verbatim_and_handles_missing_script_or_python(self):
-        draft = ROOT / 'plugins/kb/hooks/hooks.json.draft'
+        # The hook config ships as a draft first and is renamed to hooks.json once enabled;
+        # test whichever one the repository currently carries.
+        hooks_dir = ROOT / 'plugins/kb/hooks'
+        draft = hooks_dir / 'hooks.json'
+        if not draft.exists():
+            draft = hooks_dir / 'hooks.json.draft'
         data = json.loads(draft.read_text(encoding='utf-8'))
         group = data['hooks']['SessionEnd'][0]
         self.assertNotIn('matcher', group)
