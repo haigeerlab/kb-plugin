@@ -20,6 +20,14 @@ jobs:
     defaults:
       run:
         shell: bash
+    # 测试会在临时仓库里提交，再对目录做快照或删除；runner 上 git 的后台自动维护会临时写
+    # .git/objects/maintenance.lock，与之竞争导致误报。对本 job 的所有 git 进程关掉自动维护。
+    env:
+      GIT_CONFIG_COUNT: '2'
+      GIT_CONFIG_KEY_0: maintenance.auto
+      GIT_CONFIG_VALUE_0: 'false'
+      GIT_CONFIG_KEY_1: gc.auto
+      GIT_CONFIG_VALUE_1: '0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -38,10 +46,13 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 核对 Python 版本
+      - name: 核对 Python 与 git 版本
         env:
           WANT_PYTHON: ${{ matrix.python }}
-        run: python3 -c 'import os, sys; want = tuple(map(int, os.environ["WANT_PYTHON"].split("."))); print(sys.executable, sys.version.split()[0]); sys.exit(sys.version_info[:2] != want)'
+        run: |
+          git --version
+          git config --get maintenance.auto
+          python3 -c 'import os, sys; want = tuple(map(int, os.environ["WANT_PYTHON"].split("."))); print(sys.executable, sys.version.split()[0]); sys.exit(sys.version_info[:2] != want)'
 
       # 只用仓库内的虚构 fixture；不读取、不访问任何真实 kb 知识库。
       - name: 单元测试
