@@ -1,0 +1,17 @@
+name: autopilot-admission
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  admission:
+    uses: haigeerlab/autopilot-hub/.github/workflows/admission.yml@c241303c63204d0027bab31457d756855c5202aa
+    with:
+      hub_ref: c241303c63204d0027bab31457d756855c5202aa
