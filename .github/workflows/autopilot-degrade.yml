@@ -1,0 +1,23 @@
+name: autopilot-degrade
+
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+  actions: read
+
+jobs:
+  degrade:
+    uses: haigeerlab/autopilot-hub/.github/workflows/degrade.yml@c241303c63204d0027bab31457d756855c5202aa
+    with:
+      hub_ref: c241303c63204d0027bab31457d756855c5202aa

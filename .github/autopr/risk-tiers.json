@@ -1,0 +1,1 @@
+{"extends": "plugin", "T4": ["scripts/check-manifests.py", "plugins/kb/scripts/kblib/redaction.py"], "T3": ["plugins/kb/hooks/**", "plugins/kb/scripts/vendor/**"]}
