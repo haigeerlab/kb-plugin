@@ -18,6 +18,6 @@ permissions:
 
 jobs:
   degrade:
-    uses: haigeerlab/autopilot-hub/.github/workflows/degrade.yml@c241303c63204d0027bab31457d756855c5202aa
+    uses: haigeerlab/autopilot-hub/.github/workflows/degrade.yml@3081e7b47fc192b5c2652cc3397937297d7c7f12
     with:
-      hub_ref: c241303c63204d0027bab31457d756855c5202aa
+      hub_ref: 3081e7b47fc192b5c2652cc3397937297d7c7f12
