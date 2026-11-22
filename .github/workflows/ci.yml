@@ -59,3 +59,5 @@ jobs:
         run: python3 -m unittest discover -s tests
       - name: 清单检查
         run: python3 -B scripts/check-manifests.py
+      - name: 本机路径检查
+        run: python3 -B scripts/check_local_paths.py
