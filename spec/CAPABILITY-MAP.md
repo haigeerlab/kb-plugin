@@ -36,7 +36,7 @@ Build order: plugin-shell → vault-contract → redaction → save → ask → 
 - **不在本图里**：
   - spec-guard 探测 kb 并提醒先 `/kb ask`：这是 spec-guard 仓库里的改动，按生态规则先登记 SEAMS、由总负责人出方案。kb 这边只负责在 ask 模块里发布 `interface.json`。
   - promote（Phase 6）、learn 和 hot cache（Phase 7）：等试用数据出来，再用 `add-module` 插入。
-  - 发版命令（生态合并方案 S101 第三批 8.7，可调用的 check/prepare/publish 步骤，发布上限 auto-confirm）：用户 2026-11-22 决定延期。恢复条件：自动接管开启（spec-guard 0.91.0 发版且机器人身份建好），或 kb 第一次需要从 GitHub 安装到另一台机器；届时用 `add-module` 插入并走 Spec。
+  - 发版命令（生态合并方案 S101 第三批 8.7，可调用的 check/prepare/publish 步骤，发布上限 auto-confirm）：用户 2026-11-22 决定延期。恢复条件：kb 实际开启自动接管（前提 spec-guard 接管配置与机器人身份已于 2026-11-22 就绪：本机两侧 spec-guard 0.92.0），或 kb 第一次需要从 GitHub 安装到另一台机器；届时用 `add-module` 插入并走 Spec。
 
 ---
 
