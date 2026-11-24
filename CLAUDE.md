@@ -28,7 +28,7 @@
 
 ## autopilot（自动维护）
 
-- 检查入口：`python3 -m unittest discover -s tests`、`python3 -B scripts/check-manifests.py` 与 `python3 -B scripts/check_local_paths.py`
+- 检查入口：`bash scripts/validate.sh`（全量）；`bash scripts/validate.sh --quick`（只跑清单与本机路径检查）
 - 先问：推送 main、打 tag、发版、改 CI 与分支保护、改本节的“先问”边界，一律先问用户。
 - autopilot 例外：autopilot agent 可以在 `autopilot/*` 分支上提交、推送并开 PR；main、tag、发版仍然要用户本人来。
 - 隐私：任何步骤都不得读取、上传或在 CI 中访问 kb 知识库仓库；测试只用仓库内的虚构 fixture。
