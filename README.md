@@ -406,4 +406,4 @@ lint 测试覆盖提示边界、日志排除、分组与规模指标、四类问
 
 `main` 受分支保护：不能直接推送、强推或删除，所有改动都要从分支开 PR 合入。PR 上的 CI 在 macOS 上分别用 Python 3.9（Apple 自带）和 3.14 跑统一检查入口 `bash scripts/validate.sh`（清单检查、本机路径检查、全量单元测试；`--quick` 只跑前两项），另有 `plugin validate` 任务用 `claude plugin validate --strict` 校验插件；主干只把汇总任务 `CI required` 设为必过检查，它在上述任务全部通过时才通过。CI 只使用仓库内的虚构 fixture，不读取任何真实知识库。
 
-风险分级见 `.github/autopr/risk-tiers.yml`：脱敏模块、检查脚本与统一检查入口属于 T4，由维护者在对话里决定合并：会话先问「可以合并吗」，维护者回「合并」后执行 `gh pr merge --auto --merge`，`CI required` 通过后由 GitHub 合并；T4 永远不开「验证通过不问就合」的自动合并。
+风险分级见 `.github/autopr/risk-tiers.yml`：脱敏模块、检查脚本与统一检查入口属于 T4，由维护者在对话里决定合并：会话开完 PR 就问「可以合并吗」，维护者回「合并」后，检查已全部通过时直接 `gh pr merge --merge`，否则 `gh pr merge --auto --merge`，由 GitHub 等 `CI required` 通过后合并；T4 永远不开「验证通过不问就合」的自动合并。
