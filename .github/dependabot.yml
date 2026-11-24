@@ -1,0 +1,9 @@
+# 插件开发规范 C9：只更新 GitHub Actions 的引用；每月检查一次，新版本发布满 7 天才提更新。
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 7
