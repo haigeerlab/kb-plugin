@@ -20,5 +20,6 @@
 - 检查入口：`bash scripts/validate.sh`（全量）；`bash scripts/validate.sh --quick`（只跑清单与本机路径检查）
 - 先问：推送 main、打 tag、发版、改 CI 与分支保护、改本节的“先问”边界，一律先问用户。
 - autopilot 例外：autopilot agent 可以在 `autopilot/*` 分支上提交、推送并开 PR；main、tag、发版仍然要用户本人来。
+- 合并（插件开发规范 F3）：合并前先问用户「可以合并吗」；用户在对话里回「合并」后执行 `gh pr merge --auto --merge`，等必过检查 `CI required` 通过后由 GitHub 合并；再核实已合并、记下合并提交后告诉用户。T4 同样走这个流程，永不开「验证通过不问就合」。
 - 隐私：任何步骤都不得读取、上传或在 CI 中访问 kb 知识库仓库；测试只用仓库内的虚构 fixture。
 <!-- shared:end -->
