@@ -5,14 +5,16 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: read
+# 顶层不给任何权限（插件开发规范 C8），每个任务单独放权。
+permissions: {}
 
 jobs:
   test:
     name: test (${{ matrix.python }})
     runs-on: macos-15
     timeout-minutes: 20
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -57,3 +59,61 @@ jobs:
       # 统一检查入口（清单检查、本机路径检查、全部单元测试）。只用仓库内的虚构 fixture，不读取、不访问任何真实 kb 知识库。
       - name: 全量检查
         run: bash scripts/validate.sh
+      # 插件开发规范 C10：检查跑完后，已跟踪文件不应被改动。
+      - name: 工作区未被检查改动
+        run: git diff --exit-code
+
+  # 插件开发规范 C7：用 Claude Code 自带的校验检查 marketplace 与插件清单、skills。
+  # 版本钉死（发布满两周的版本），安装照 anthropics/claude-plugins-official 的做法重试。
+  # 注意：validate 不检查 frontmatter 的 YAML 能否解析，该项由 autopilot-hub 的共享检查负责（影子期接入后加在本任务里）。
+  plugin-validate:
+    name: plugin validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      CLAUDE_CODE_VERSION: '2.1.321'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 安装 Claude Code
+        run: |
+          for attempt in 1 2 3; do
+            timeout -k 10 300 npm install -g --include=optional "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" || true
+            if claude --version; then exit 0; fi
+            timeout -k 10 300 node "$(npm root -g)/@anthropic-ai/claude-code/install.cjs" || true
+            if claude --version; then exit 0; fi
+            npm uninstall -g @anthropic-ai/claude-code || true
+            npm cache clean --force || true
+            sleep $((attempt * 10))
+          done
+          echo "::error::Claude Code ${CLAUDE_CODE_VERSION} did not install after 3 attempts."
+          exit 1
+      - name: 校验 marketplace
+        run: claude plugin validate --strict . < /dev/null
+      - name: 校验插件
+        run: claude plugin validate --strict plugins/kb < /dev/null
+
+  # 插件开发规范 C1：主干只把这一个汇总任务设为必过检查。
+  # 任何一个前置任务失败、被取消或被跳过，它就失败；加任务时只需把任务名加进 needs。
+  ci-required:
+    name: CI required
+    if: always()
+    needs: [test, plugin-validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: 汇总前置任务结果
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s' "$NEEDS" | python3 -c '
+          import json, sys
+          needs = json.load(sys.stdin)
+          results = {name: job["result"] for name, job in needs.items()}
+          print(json.dumps(results, ensure_ascii=False))
+          sys.exit(0 if results and all(r == "success" for r in results.values()) else 1)
+          '
