@@ -9,6 +9,9 @@
 - 接入 autopilot：准入与降级调用；项目接管档位为 `plan`（只把 Plan 批准交给 Codex，Spec、合并、发布仍由人来）。
 - 文档：英文 README、SECURITY、AGENTS.md。
 
+### 变更
+- 按规范 v1.7.3 的 C2 改写快检查：`scripts/validate.sh --quick` 由 `scripts/select_tests.py` 按本分支改动挑测试，对应不上时退回全量；全量逐个文件跑，最后列出最慢的测试文件。
+
 ## [0.1.0] - 2026-11-20（开发版本，未打 tag）
 
 ### 新增
