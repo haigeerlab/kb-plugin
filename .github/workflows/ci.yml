@@ -11,8 +11,16 @@ name: CI
 
 on:
   pull_request:
+    # edited: a title or body change reruns the WHOLE CI. Never skip jobs on `edited`: `CI required` treats skipped
+    # as fine, so skipping tests there would let a title edit turn a failing PR green.
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
+
+# One run per PR (or per push to main); a newer event cancels the older run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions: {}
 
