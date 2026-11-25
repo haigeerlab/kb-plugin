@@ -34,8 +34,7 @@ if [ "$tests" != ALL ]; then
   fi
   echo "== 单元测试（快检查）：$tests"
   cd tests
-  # shellcheck disable=SC2086 # 模块名以空格分隔，需要分词
-  python3 -m unittest $tests
+  printf '%s\n' "$tests" | xargs python3 -m unittest
   echo "快检查通过"
   exit 0
 fi
