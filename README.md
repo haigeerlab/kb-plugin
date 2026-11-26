@@ -53,6 +53,7 @@ python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py doctor --json
 ```
 
 doctor 检查配置、知识库目录是否存在和可读取、Python 版本是否满足要求，不进行知识操作。
+它还只检查本地 `blocklist.txt` 和 `aliases.json` 是否存在；缺失显示「提醒」（JSON 检查项为 `level: "warn"`），不影响整体 `ok` 或退出码，也不读取规则内容。
 退出码：`0` 成功，`1` 自检发现问题，`2` 配置或用法错误。
 
 ## 配置知识库位置
@@ -144,6 +145,7 @@ redact 先按本地对照替换项目真名，再扫描密钥与凭证、IPv4、
 | `redaction-allow.txt` | 位于知识库根目录，进 git，每行 `相对路径 SHA-256前16位十六进制 # 说明`，例如 `raw/example.md 0123456789abcdef # 人工确认的误报`。仅存路径和哈希，不存原文；只有同路径、同命中内容才放行，换文件或改内容后失效。空行、`#` 注释忽略，格式错误报告原始行号 |
 
 blocklist.txt 与 aliases.json 始终跟随配置文件所在目录；设置 `KB_CONFIG=/临时目录/config.json` 后，它们也位于 `/临时目录/`，不读取默认目录。三个文件缺失均视为空；未配置知识库时也能运行 redact，仅不读取知识库放行清单。
+运行 `python3 -B /绝对路径/kb-plugin/plugins/kb/scripts/kb.py config init-redaction` 可预览创建缺失的本地规则空模板，确认后追加 `--confirm`（支持 `--json`）；新文件权限 `0600`，新目录权限 `0700`，已有文件及符号链接一律跳过，不读取、不覆盖。模板初始无规则，内容由你自己填写，不要放进任何仓库。
 放行哈希取扫描实际命中的完整片段，以 UTF-8 编码计算 SHA-256 后截取前 16 位；不要把敏感原文写进放行清单或注释。相同文件中相同内容的重复出现共享同一条放行记录。
 
 `kb check` 已注册 redaction，检查 inbox/、raw/、wiki/、index.md、log.md；它读取黑名单与放行清单，扫描原文，不进行别名替换。指定路径时扫描对应内容，index、log 与放行清单格式仍作全局检查。模板与 SCHEMA.md 不属于脱敏扫描范围。

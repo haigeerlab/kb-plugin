@@ -38,6 +38,12 @@ python3 -B plugins/kb/scripts/kb.py check                               # 现在
 
 `redact --json` 的输出：`{ok, replaced: <替换数>, findings: [{code: "redaction", category, path, line, column, masked}]}`；`category` 取 `secret`、`network`、`email`、`blocklist` 之一。
 
+### 本地规则创建入口
+
+`python3 -B plugins/kb/scripts/kb.py config init-redaction [--confirm] [--json]` 默认只预览 `config_path().parent` 下将创建的 `blocklist.txt`、`aliases.json`，不创建目录。用户确认后追加 `--confirm`，以 `O_CREAT|O_EXCL` 只创建缺失文件（`0600`），缺失目录以 `0700` 创建；已有文件及符号链接一律跳过，不读取、不覆盖、不修改。黑名单模板仅含注释，代号模板为 `{}` 加换行，加载后分别为空列表和空字典；实际规则由用户自己填写，映射格式 `{"真实名称": "proj-xxx"}` 在输出中说明，规则文件不得进入任何仓库。成功及失败 JSON 均含 `ok`、`config`、`create`、`skip`、`written`、`error`。
+
+doctor 对上述两个文件只检查存在性，不读取内容。缺失时以「提醒」说明相应黑名单拦截或代号替换规则不生效，并给出创建命令；存在时显示「通过」。JSON 保留原有顶层字段及检查项的 `name`、`ok`、`message` 字段，新增检查名为 `blocklist`、`aliases`；两项的 `ok` 恒为 `true`（`ok: false` 仍只表示失败），缺失或符号链接目标不存在时带 `level: "warn"`，存在时带 `level: "info"`；提醒不影响整体 `ok` 和退出码。这不验证文件格式，也不代表空模板已包含有效业务规则。
+
 ## Project Structure（本模块新增或修改）
 
 ```
@@ -96,3 +102,4 @@ tests/test_redaction.py
 ## 变更记录
 
 - 2026-11-19 初稿。
+- 2026-11-26：补充本地规则空模板创建入口与 doctor 存在性提醒。原因：缺失规则静默为空且用户缺少创建入口。来源：插件功能盘点第六节缺口 2，用户 2026-11-26 同意按方案实现。

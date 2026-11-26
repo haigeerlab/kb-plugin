@@ -55,6 +55,7 @@ python3 -B /absolute/path/kb-plugin/plugins/kb/scripts/kb.py doctor --json
 ```
 
 doctor checks the configuration, whether the vault directory exists and is readable, and whether the Python version meets the requirement. It does not perform any knowledge operations.
+It also checks only whether local `blocklist.txt` and `aliases.json` exist, without reading their contents. Missing files produce warnings (`level: "warn"` in JSON checks) without changing the overall `ok` or exit code.
 Exit codes: `0` success, `1` the self-check found problems, `2` configuration or usage error.
 
 ## Configure the vault location
@@ -146,6 +147,7 @@ You maintain three configuration files:
 | `redaction-allow.txt` | Located at the vault root. Committed to git. Each line is `relative-path SHA-256-first-16-hex # note`, for example `raw/example.md 0123456789abcdef # manually confirmed false positive`. It stores only the path and hash, never the original text. An entry allows a finding only for the same path and the same matched content. It becomes invalid if the file is renamed or its content changes. Empty lines and `#` comments are ignored. Format errors are reported with the original line number |
 
 blocklist.txt and aliases.json always follow the directory that contains the configuration file. If you set `KB_CONFIG=/tmp-dir/config.json`, they are also located in `/tmp-dir/` and the default directory is not read. If any of the three files is missing, it is treated as empty. redact can run even without a configured vault. It just does not read the vault's allowlist.
+Run `python3 -B /absolute/path/kb-plugin/plugins/kb/scripts/kb.py config init-redaction` to preview missing local rule templates, then add `--confirm` after confirming (also supports `--json`). New files use mode `0600` and new directories use `0700`. Existing files, including symlinks, are skipped without reading or overwriting them. Templates start with no rules; fill them in yourself and keep them out of every repository.
 The allowlist hash is computed over the full fragment that the scan actually matched. It is encoded as UTF-8, hashed with SHA-256, and the first 16 hex characters are kept. Do not write sensitive original text into the allowlist or its comments. Repeated occurrences of the same content in the same file share one allowlist entry.
 
 `kb check` registers redaction. It checks inbox/, raw/, wiki/, index.md, and log.md. It reads the blocklist and the allowlist and scans the original text. It does not perform alias replacement. When paths are given, it scans only the corresponding content. The index, log, and allowlist format are still checked globally. Templates and SCHEMA.md are outside the scope of redaction scanning.
