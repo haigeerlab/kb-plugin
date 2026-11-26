@@ -98,3 +98,4 @@ README.md
 ## 变更记录
 
 - 2026-11-19 初稿。
+- 2026-11-26 Codex 触发的 SessionEnd（transcript_path 为 null，且带 hook_event_name=SessionEnd 和字符串 session_id）安静跳过，不记日志、不进队列；真正采集 Codex 会话不在本次范围。

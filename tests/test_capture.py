@@ -189,6 +189,8 @@ class CaptureTests(unittest.TestCase):
     def test_every_required_field_is_validated_and_session_is_logged(self):
         for key in self.event:
             for value in (None, '', 3, '\0'):
+                if key == 'transcript_path' and value is None:
+                    continue
                 with self.subTest(key=key, value=value):
                     self.hook(event=dict(self.event, **{key: value}))
                     self.assertIn(key, self.log.read_text(encoding='utf-8').splitlines()[-1])
@@ -196,6 +198,19 @@ class CaptureTests(unittest.TestCase):
             del event[key]
             self.hook(event=event)
         self.assertIn('session-one', self.log.read_text(encoding='utf-8'))
+        self.assertFalse(self.queue.exists())
+
+    def test_codex_session_end_with_null_transcript_is_silent(self):
+        event = {'session_id': '01a215c5-b29e-7450-9f12-3f08b9d00000',
+                 'transcript_path': None, 'cwd': str(self.base),
+                 'hook_event_name': 'SessionEnd', 'reason': 'other'}
+        self.hook(event=event)
+        self.assertFalse(self.state.exists())
+        # Without the Codex markers, a null transcript_path is still invalid input and is logged.
+        for count, key in enumerate(('hook_event_name', 'session_id'), 1):
+            with self.subTest(missing=key):
+                self.hook(event={k: v for k, v in event.items() if k != key})
+                self.assertEqual(len(self.log.read_text(encoding='utf-8').splitlines()), count)
         self.assertFalse(self.queue.exists())
 
     def test_invalid_configurations_log_and_status_reports_two(self):

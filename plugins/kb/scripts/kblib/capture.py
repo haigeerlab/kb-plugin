@@ -39,6 +39,10 @@ def _capture_session(stdin_text, environ):
         event = json.loads(stdin_text)
         if not isinstance(event, dict):
             raise KbError('SessionEnd 输入必须是 JSON 对象')
+        # Codex sends transcript_path: null; capturing Codex sessions is out of scope.
+        if ('transcript_path' in event and event['transcript_path'] is None
+                and event.get('hook_event_name') == 'SessionEnd' and isinstance(event.get('session_id'), str)):
+            return
         session_id = event.get('session_id')
         for key in ('session_id', 'transcript_path', 'cwd', 'reason'):
             value = event.get(key)
