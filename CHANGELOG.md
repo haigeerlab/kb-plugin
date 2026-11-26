@@ -12,6 +12,9 @@
 ### 变更
 - 按规范 v1.7.3 的 C2 改写快检查：`scripts/validate.sh --quick` 由 `scripts/select_tests.py` 按本分支改动挑测试，对应不上时退回全量；全量逐个文件跑，最后列出最慢的测试文件。
 
+### 修复
+- Codex 触发的 SessionEnd（`transcript_path` 为 null，且带 `hook_event_name: SessionEnd` 和字符串 `session_id`）安静跳过，不记日志、不进候选队列；真正采集 Codex 会话不在本次范围。
+
 ## [0.1.0] - 2026-11-20（开发版本，未打 tag）
 
 ### 新增

@@ -252,6 +252,15 @@ class DelegateLessonsTests(unittest.TestCase):
         self.assertEqual((result.returncode, result.stdout, result.stderr), (0, '', ''))
         self.assertFalse(self.state.exists())
 
+    def test_codex_session_end_still_runs_delegate_scan(self):
+        event = {'session_id': '01a215c5-b29e-7450-9f12-3f08b9d00000', 'transcript_path': None,
+                 'cwd': str(self.base), 'hook_event_name': 'SessionEnd', 'reason': 'other'}
+        result = self.cli('capture', 'hook', stdin=json.dumps(event))
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, '', ''))
+        self.assertEqual(len(self.snapshots()), 5)
+        self.assertNotIn('transcript_path', (self.state / 'capture.log').read_text(encoding='utf-8')
+                         if (self.state / 'capture.log').exists() else '')
+
     def test_hook_bad_inputs_and_scan_exceptions_are_silent(self):
         for content in ('', '{}', '[]', '{broken', json.dumps(self.event)):
             with self.subTest(content=content):
