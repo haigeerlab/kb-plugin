@@ -110,6 +110,48 @@ def set_vault(value: str, confirm: bool = False) -> dict:
     return {"ok": True, "config": str(path), "content": content, "written": confirm, "error": None}
 
 
+def init_redaction(confirm: bool = False) -> dict:
+    path = config_path()
+    templates = {
+        'blocklist.txt': (
+            '# 本地黑名单：一行一个词，不区分大小写，按子串匹配。\n'
+            '# 以 # 开头的行是注释。\n'
+            '# 在这里写客户名、品牌、公司域名等不能进知识库的词。\n'
+            '# 这个文件只留在本机，不要放进任何仓库。\n'
+        ),
+        'aliases.json': '{}\n',
+    }
+    result = {'ok': True, 'config': str(path), 'create': [], 'skip': [],
+              'written': confirm, 'error': None}
+    try:
+        for name, content in templates.items():
+            target = path.parent / name
+            if os.path.lexists(target):
+                result['skip'].append(name)
+                continue
+            if confirm:
+                missing = []
+                directory = path.parent
+                while not directory.exists():
+                    missing.append(directory)
+                    directory = directory.parent
+                for directory in reversed(missing):
+                    directory.mkdir(mode=0o700, exist_ok=True)
+                try:
+                    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                except FileExistsError:
+                    # A concurrent creator wins, including a newly added symlink.
+                    result['skip'].append(name)
+                    continue
+                with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+                    os.fchmod(stream.fileno(), 0o600)
+                    stream.write(content)
+            result['create'].append(name)
+    except OSError:
+        raise KbError(f'脱敏配置 {path.parent}：无法创建文件，可能已部分创建；请检查路径与权限后重新预览') from None
+    return result
+
+
 CAPTURE_DEFAULTS = {'session_capture': True, 'capture_min_user_messages': 2,
                     'capture_ignore_dirs': [], 'delegate_capture': True,
                     'delegate_min_answer_bytes': 200}

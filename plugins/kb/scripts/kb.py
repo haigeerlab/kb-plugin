@@ -14,7 +14,7 @@ import sys
 from kblib import KbError, candidates, capture, delegate_lessons, semantic
 from kblib.ask import search
 from kblib.compile import compile as compile_draft
-from kblib.config import (config_path, load_aliases, load_blocklist, read_optional_text,
+from kblib.config import (config_path, init_redaction, load_aliases, load_blocklist, read_optional_text,
                           resolve_vault, set_vault, set_capture)
 from kblib.doctor import diagnose
 from kblib.checks import check as check_vault
@@ -41,6 +41,7 @@ class ChineseParser(argparse.ArgumentParser):
         raise KbError(
             "命令或参数无效。用法：kb.py doctor [--json]；"
             "kb.py config set-vault <路径> [--confirm] [--json]；"
+            "kb.py config init-redaction [--confirm] [--json]；"
             "kb.py init [--confirm] [--json]；kb.py check [--json] [路径 ...]；"
             "kb.py redact <文件|-> [--json | --apply-aliases]；"
             "kb.py save preview <草稿目录> [--json]；"
@@ -65,6 +66,9 @@ def build_parser():
     setter.add_argument("path", metavar="路径", help="已存在的知识库目录")
     setter.add_argument("--confirm", action="store_true", help="确认写入配置；默认只预览")
     setter.add_argument("--json", action="store_true", help="输出 JSON 对象")
+    redaction_init = actions.add_parser('init-redaction', help='预览或创建缺失的本地脱敏规则模板')
+    redaction_init.add_argument('--confirm', action='store_true', help='确认创建；默认只预览')
+    redaction_init.add_argument('--json', action='store_true', help='输出 JSON 对象')
     setter = actions.add_parser('set-capture', help='预览或写入会话结束采集配置')
     setter.add_argument('--enabled', required=True, choices=('true', 'false'), help='是否开启采集')
     setter.add_argument('--min-user-messages', type=int, metavar='N', help='用户消息阈值，必须为正整数')
@@ -254,6 +258,8 @@ def main(argv=None):
             result = capture.status()
         elif args.command == 'config' and args.action == 'set-capture':
             result = set_capture(args.enabled == 'true', args.min_user_messages, args.ignore_dir, args.confirm)
+        elif args.command == 'config' and args.action == 'init-redaction':
+            result = init_redaction(args.confirm)
         else:
             result = set_vault(args.path, args.confirm)
         if args.command not in ('save', 'compile', 'commit-pending') and not (args.command == 'lint' and args.action == 'fix'):
@@ -288,6 +294,8 @@ def main(argv=None):
             result.update(vault=None, create=[], skip=[], git_init=False, written=False)
         elif is_doctor:
             result.update(vault=None, checks=[])
+        elif argv[:2] == ['config', 'init-redaction']:
+            result.update(create=[], skip=[], written=False)
         else:
             result.update(content=None, written=False)
         exit_code = error.exit_code
@@ -375,8 +383,19 @@ def main(argv=None):
     elif is_doctor:
         print(f"配置文件：{result['config']}\n知识库：{result['vault']}")
         for check in result["checks"]:
-            print(f"{'通过' if check['ok'] else '失败'}：{check['message']}")
+            label = '提醒' if check.get('level') == 'warn' else ('通过' if check['ok'] else '失败')
+            print(f"{label}：{check['message']}")
         print("自检通过。" if result["ok"] else result["error"])
+    elif argv[:2] == ['config', 'init-redaction']:
+        print(f"{'已初始化脱敏配置' if result['written'] else '脱敏配置预览'}：{Path(result['config']).parent}")
+        for name in result['create']:
+            print(f"{'已创建' if result['written'] else '将创建'}：{name}")
+        for name in result['skip']:
+            print(f'跳过（已存在，不读取、不覆盖）：{name}')
+        print('规则内容由用户自己填写；aliases.json 格式：{"真实名称": "proj-xxx"}。')
+        print('新模板没有任何规则；本地脱敏规则文件不要放进任何仓库。')
+        if not result['written']:
+            print('尚未写入文件；确认后在同一命令后追加 --confirm。')
     else:
         print(f"{'已写入配置' if result['written'] else '预览，将写入配置'}：{result['config']}")
         print(json.dumps(result["content"], ensure_ascii=False, indent=2))
